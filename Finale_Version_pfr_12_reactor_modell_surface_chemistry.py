@@ -3,6 +3,21 @@
 import cantera as ct
 import numpy as np
 import matplotlib.pyplot as plt
+'''
+Fragen:
+1. Wieso gibts 12 Einzehlne Reaktoren?
+2. Warum werden die Reaktoren alle gleichzeitig simmuliert und nicht wie in dem Beispiel wo 
+nur eine "Scheibe" wird simmuliert, bis ein stationären Zustand erreicht wird?
+3. Wozu ist der Wärmeaustasch zwischen 1-12 usw?
+4. Warum läuft die Reaktion nur in Reaktoren 5-8?
+
+Die Idee von Plug Flow Reactor ist, dass man unendlich viele, unendlich dünne Scheibe mit Vol -> 0 hat und jede Scheibe 
+bis zum stationären Zustand integriert und der Termodynamischer Zustand am Outlet ist Inlet für die nächste Scheibe. 
+Die einzehlne scheiben verhalten sich als die kleine CSTR wären (ideal durchmischt) und der Transport findet nur in postitive, 
+axiale Richtung statt. Hier ist aber nicht der Fall.?
+
+
+'''
 
 #######################################################################
 # Input Parameters

@@ -18,16 +18,16 @@ import matplotlib.pyplot as plt
 T_0 = 873.0  # inlet temperature [K]
 pressure = ct.one_atm  # constant pressure [Pa]
 composition_0 = 'C3H8:10, H2:1'
-length = 1.5e-7  # *approximate* PFR length [m]
+length = 1.5e-2  # *approximate* PFR length [m]
 u_0 = .006  # inflow velocity [m/s]
-area = 1.e-4  # cross-sectional area [m**2]
+area = 1.e-2  # cross-sectional area [m**2]
 
 # input file containing the reaction mechanism
 reaction_mechanism = 'mech_13.yaml'
 
 # Resolution: The PFR will be simulated by 'n_steps' time steps or by a chain
 # of 'n_steps' stirred reactors.
-n_steps = 10
+n_steps = 20
 #####################################################################
 
 #####################################################################
@@ -105,21 +105,17 @@ states2.write_csv('pfr_test.csv')
 #####################################################################
 # Compare Results in matplotlib
 #####################################################################
-
-plt.figure()
+plt.clf()
+plt.subplot(1,2,1)
 # plt.plot(z1, states1.T, label='Lagrangian Particle')
 plt.plot(z2, states2.T, label='Reactor Chain')
 plt.xlabel('$z$ [m]')
 plt.ylabel('$T$ [K]')
-plt.legend(loc=0)
-plt.show()
-plt.savefig('pfr_T_z.jpg')
 
-plt.figure()
+plt.subplot(1,2,2)
 # plt.plot(t1, states1.X[:, gas1.species_index('H2')], label='Lagrangian Particle')
 plt.plot(t2, states2.X[:, gas2.species_index('C3H8')], label='Reactor Chain')
 plt.xlabel('$t$ [s]')
 plt.ylabel('$X_{C3H8}$ [-]')
-plt.legend(loc=0)
+plt.tight_layout()
 plt.show()
-plt.savefig('pfr_XC3H8_t.jpg')
