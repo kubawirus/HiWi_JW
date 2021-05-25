@@ -21,6 +21,11 @@ Aus dem mech_13.yaml müssen die Reaktionen ausgeschlossen werden, die kleine (<
 Reaktionsrate haben. 
 """
 
+"""
+info:
+To use this script, you have to define initial_state, the simulation time and 
+the min. reaction rate beneath which all reactions will be cut off.
+"""
 import cantera as ct
 import numpy as np
 import matplotlib.pyplot as plt
@@ -39,7 +44,7 @@ TT = []
 t = 0.0
 # Rmax is the maximum relative reaction rate at any timestep. An Array of size n_reactions full of zeros is created
 Rmax = np.zeros(gas.n_reactions)
-while t < 0.5:
+while t < 0.01:
     t = sim.step()
     tt.append(1000 * t)
     TT.append(r.T)
@@ -52,15 +57,15 @@ plt.plot(tt, TT, label='K=All_species, R=All_reac.', color='k', lw=2)
 # Get the reaction objects, and sort them so the most active reactions are first
 R = sorted(zip(Rmax, gas.reactions()), key=lambda x: -x[0])
 
-# Most active reactions rate
-kmax = 10.0**(-20)
+# Smallest reactions rate accepted
+kmin = 10.0**(-20)
 # Create an empty list for reactions
 reactions = []
 
 # Iterating through every reaction (these are sorted that's why break after else)
 # and writing to new list all these reactions that have k > 10^-20
 for i, j in enumerate(R):
-    if j[0] > kmax:
+    if j[0] > kmin:
         reactions.append(j[1])
     else:
         break
@@ -84,8 +89,13 @@ gas2 = ct.Solution(thermo='IdealGas', kinetics='GasKinetics',
 # show gas2
 gas2()
 
+# write a new txt file to review the existing species in gas2
+f = open("species_reduced.txt", "w")
+for red_spec in gas2.species_names:
+    f.write(red_spec + "\n" )
+f.close()
 
-# Re-run the ignition problem with the reduced mechanism
+# Re-run the ignition problem with the reduced mechanism (from there is not compulsory)
 gas2.TPX = initial_state
 r = ct.IdealGasConstPressureReactor(gas2)
 sim = ct.ReactorNet([r])
@@ -94,7 +104,7 @@ t = 0.0
 
 tt = []
 TT = []
-while t < 0.5:
+while t < 0.01:
     t = sim.step()
     tt.append(1000 * t)
     TT.append(r.T)
