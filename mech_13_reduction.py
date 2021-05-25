@@ -25,9 +25,9 @@ import cantera as ct
 import numpy as np
 import matplotlib.pyplot as plt
 
-gas = ct.Solution('gri30.yaml')
+gas = ct.Solution('mech_13.yaml')
 # Here is the initial conditions are defined
-initial_state = 1200, 5 * ct.one_atm, 'CH4:0.35, O2:1.0, N2:3.76'
+initial_state = 873.0, ct.one_atm, 'C3H8:10, H2:1'
 
 # Run a simulation with the full mechanism
 gas.TPX = initial_state
@@ -39,7 +39,7 @@ TT = []
 t = 0.0
 # Rmax is the maximum relative reaction rate at any timestep. An Array of size n_reactions full of zeros is created
 Rmax = np.zeros(gas.n_reactions)
-while t < 0.02:
+while t < 0.5:
     t = sim.step()
     tt.append(1000 * t)
     TT.append(r.T)
@@ -47,56 +47,65 @@ while t < 0.02:
     rnet /= max(rnet)
     Rmax = np.maximum(Rmax, rnet)
 
-plt.plot(tt, TT, label='K=53, R=325', color='k', lw=3, zorder=100)
+plt.plot(tt, TT, label='K=All_species, R=All_reac.', color='k', lw=2)
 
 # Get the reaction objects, and sort them so the most active reactions are first
 R = sorted(zip(Rmax, gas.reactions()), key=lambda x: -x[0])
-print(R)
 
-# Test reduced mechanisms with different numbers of reactions
-C = plt.cm.winter(np.linspace(0, 1, 5))
-for i, N in enumerate([40, 50, 60, 70, 80]):
-    # Get the N most active reactions
-    reactions = [r[1] for r in R[:N]]
-    print(reactions)
+# Most active reactions rate
+kmax = 10.0**(-20)
+# Create an empty list for reactions
+reactions = []
 
-    # find the species involved in these reactions. At a minimum, include all
-    # species in the reactant mixture
-    species_names = {'N2', 'CH4', 'O2'}
-    for reaction in reactions:
-        species_names.update(reaction.reactants)
-        species_names.update(reaction.products)
+# Iterating through every reaction (these are sorted that's why break after else)
+# and writing to new list all these reactions that have k > 10^-20
+for i, j in enumerate(R):
+    if j[0] > kmax:
+        reactions.append(j[1])
+    else:
+        break
 
-    # Get the species objects
-    species = [gas.species(name) for name in species_names]
-    print(species)
+print(reactions)
 
-    # create the new reduced mechanism
-    gas2 = ct.Solution(thermo='IdealGas', kinetics='GasKinetics',
-                       species=species, reactions=reactions)
+# find the species involved in these reactions. At a minimum, include all
+# species in the reactant mixture`
+species_names = {'C3H8' , 'H2'}
+for reaction in reactions:
+    species_names.update(reaction.reactants)
+    species_names.update(reaction.products)
 
-    # Re-run the ignition problem with the reduced mechanism
-    gas2.TPX = initial_state
-    r = ct.IdealGasConstPressureReactor(gas2)
-    sim = ct.ReactorNet([r])
+# Get the species objects
+species = [gas.species(name) for name in species_names]
+print(species)
 
-    t = 0.0
+# create the new reduced mechanism
+gas2 = ct.Solution(thermo='IdealGas', kinetics='GasKinetics',
+                   species=species, reactions=reactions)
+# show gas2
+gas2()
 
-    tt = []
-    TT = []
-    while t < 0.02:
-        t = sim.step()
-        tt.append(1000 * t)
-        TT.append(r.T)
 
-    plt.plot(tt, TT, lw=2, color=C[i],
-             label='K={0}, R={1}'.format(gas2.n_species, N))
-    plt.xlabel('Time (ms)')
-    plt.ylabel('Temperature (K)')
-    plt.legend(loc='upper left')
-    plt.title('Reduced mechanism ignition delay times\n'
-              'K: number of species; R: number of reactions')
-    plt.xlim(0, 20)
-    plt.tight_layout()
+# Re-run the ignition problem with the reduced mechanism
+gas2.TPX = initial_state
+r = ct.IdealGasConstPressureReactor(gas2)
+sim = ct.ReactorNet([r])
+
+t = 0.0
+
+tt = []
+TT = []
+while t < 0.5:
+    t = sim.step()
+    tt.append(1000 * t)
+    TT.append(r.T)
+
+# Checking on the plot if the mechanism looks same with reduced number of reactions.
+plt.plot(tt, TT, 'r--', label='K= Reduced spec., R= Reduced react.', lw = 1 )
+plt.xlabel('Time (ms)')
+plt.ylabel('Temperature (K)')
+plt.legend(loc='upper left')
+plt.title('Reduced mechanism ignition delay times\n'
+          'K: number of species; R: number of reactions')
+plt.tight_layout()
 
 plt.show()
