@@ -1,6 +1,6 @@
 import cantera as ct
 # import numpy as np
-# import matplotlib.pyplot as plt
+import matplotlib.pyplot as plt
 """
 In this automated version of reactor model, the number of rectors is free to choose but it must be
 divisible by 3. In the first third of reactor there is only heat exchange through the wall, in the second third
@@ -107,7 +107,7 @@ sim = ct.ReactorNet(reactors)
 
 # "Länge" des Gesamtreaktors nach jedem Teilreaktor" ??
 z_vec=[]
-for i in range(1,n_steps+1):
+for i in range(n_steps):
     z_vec.append(i*dz)
 
 # Zustände in den Reaktoren
@@ -166,22 +166,48 @@ for n in range(steps):
             dict_T[j].append(reactors[j].T)
             dict_states[j].append(reactors[j].thermo.state)
 
-    # Creating lists with temp, pressure and species conc. for diagrams.
-    for k in range(n_steps):
-        temp_profile.append(reactors[k].T)
-        p_profile.append(reactors[k].thermo.P)
-        X_CH4_profile.append(reactors[k].thermo.X[gas.species_index('CH4')])
-        X_O2_profile.append(reactors[k].thermo.X[gas.species_index('O2')])
-        X_CO2_profile.append(reactors[k].thermo.X[gas.species_index('CO2')])
-        X_H2O_profile.append(reactors[k].thermo.X[gas.species_index('H2O')])
-
     print('Reaktordurchlauf:\t', n+1)
+
+# Creating lists with temp, pressure and species conc. for diagrams.
+for k in range(n_steps):
+    temp_profile.append(reactors[k].T)
+    p_profile.append(reactors[k].thermo.P)
+    X_CH4_profile.append(reactors[k].thermo.X[gas.species_index('CH4')])
+    X_O2_profile.append(reactors[k].thermo.X[gas.species_index('O2')])
+    X_CO2_profile.append(reactors[k].thermo.X[gas.species_index('CO2')])
+    X_H2O_profile.append(reactors[k].thermo.X[gas.species_index('H2O')])
 
 # At the outlet from Reactor
 gas.TDY = reactors[n_steps - 1].thermo.TDY
 gas()
 
+# Plots:
+# plt.figure()
+# plt.subplot(231)
+# plt.plot(z_vec, temp_profile)
+# plt.subplot(232)
+# plt.plot(z_vec, p_profile)
+# plt.subplot(233)
+# plt.plot(z_vec, X_CH4_profile)
+# plt.subplot(234)
+# plt.plot(z_vec, X_O2_profile)
+# plt.subplot(235)
+# plt.plot(z_vec, X_CO2_profile)
+# plt.subplot(236)
+# plt.plot(z_vec, X_H2O_profile)
+#
+# plt.show()
 
+fig,(ax1, ax2) = plt.subplots(2,1)
+fig.suptitle('Plots for evaluation of reactor')
+ax1.plot(z_vec, temp_profile)
+ax1.set_ylabel('Temperature profile')
+
+ax2.plot(z_vec, X_CH4_profile)
+ax2.set_ylabel('CH4 profile')
+ax2.set_xlabel('Reactor length')
+
+plt.show()
 
 
 
