@@ -39,6 +39,7 @@ area = 1.0 * cm**2  # Catalyst bed area
 cat_area_per_vol = 1000.0 / cm  # Catalyst particle surface area per unit volume
 initial_coverage_catalyst= 'O(S):0.00, PT(S):0.01, H(S):0.99' #Zeile selbst hizugefügt. Wert aus Mechanismus        
 
+# Warum solche Angaben??
 length = 1.5e-7  # *approximate* PFR length [m]
 u_0 = .006  # inflow velocity [m/s]
 area = 1.e-4  # cross-sectional area [m**2]
@@ -1056,7 +1057,7 @@ plt.figure(4)
 for n in range(steps):
     plt.plot(z_vec, r1_T_vec[0+(n_steps)*n:(n_steps)+(n_steps)*n],'^-',label='T of r1')
 plt.xlabel('$z$ [m]')
-plt.ylabel('$T$ [K]') 
+plt.ylabel('$T$ [K]')
 plt.legend(loc=0)
 plt.title('Reactor 1')
 
@@ -1118,7 +1119,7 @@ plt.legend(loc=0)
 plt.title('Reactor 12')
 '''
 # Plots: 12-16 "full timeline". Alle Werte werden nach jedem Teilschritt (Weitergabe der Gase zum nächsten Reaktor) in allen 12 Reaktoren abgespeichert und hier aufgetragen
-# Nach jeweils 12 Schritten erfolget ein neuer Durchlauf der 12 Reaktoren mit frischen Edukten 
+# Nach jeweils 12 Schritten erfolget ein neuer Durchlauf der 12 Reaktoren mit frischen Edukten
 # x Achsen anzahl der Gsamtschritte also Durchläufe*12
 plt.figure(12)
 plt.plot(np.arange(2,len(states1.T)+2),states1.T,'^-',label='T of r1')
@@ -1200,7 +1201,7 @@ plt.figure(21)
 for n in range(steps):
     plt.plot(reactor_steps,p_profile[0+n_steps*n:n_steps+n_steps*n],'^-',label='Pressure Profile')
 plt.xlabel('$Reaktor$')
-plt.ylabel('$P$ [Pa]') 
+plt.ylabel('$P$ [Pa]')
 plt.title('Entwicklung des Druckprofils')
 plt.legend(loc=0)
 
@@ -1208,7 +1209,7 @@ plt.figure(22)
 for n in range(steps):
     plt.plot(reactor_steps,X_CH4_profile[0+n_steps*n:n_steps+n_steps*n],'^-',label='X CH4 Profile')
 plt.xlabel('$Reaktor$')
-plt.ylabel('$X$ [-]') 
+plt.ylabel('$X$ [-]')
 plt.title('Entwicklung des CH4 Profils')
 plt.legend(loc=0)
 
@@ -1216,7 +1217,7 @@ plt.figure(23)
 for n in range(steps):
     plt.plot(reactor_steps,X_O2_profile[0+n_steps*n:n_steps+n_steps*n],'^-',label='X O2 Profile')
 plt.xlabel('$Reaktor$')
-plt.ylabel('$X$ [-]') 
+plt.ylabel('$X$ [-]')
 plt.title('Entwicklung des O2 Profils')
 plt.legend(loc=0)
 
@@ -1225,7 +1226,7 @@ plt.figure(24)
 for n in range(steps):
     plt.plot(reactor_steps,X_CO2_profile[0+n_steps*n:n_steps+n_steps*n],'^-',label='X CO2 Profile')
 plt.xlabel('$Reaktor$')
-plt.ylabel('$X$ [-]') 
+plt.ylabel('$X$ [-]')
 plt.title('Entwicklung des CO2 Profils')
 plt.legend(loc=0)
 
@@ -1233,7 +1234,7 @@ plt.figure(25)
 for n in range(steps):
     plt.plot(reactor_steps,X_H2O_profile[0+n_steps*n:n_steps+n_steps*n],'^-',label='X H2O Profile')
 plt.xlabel('$Reaktor$')
-plt.ylabel('$X$ [-]') 
+plt.ylabel('$X$ [-]')
 plt.title('Entwicklung des H20 Profils')
 plt.legend(loc=0)
 

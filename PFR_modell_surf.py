@@ -3,13 +3,15 @@ import cantera as ct
 import matplotlib.pyplot as plt
 import time
 """
-In this automated version of reactor model, the number of rectors is free to choose but it must be
-divisible by 3. In the first third of reactor there is only heat exchange through the wall, in the second third
-the catalytic surface reaction takes place and in the last third comes also to the heat exchange through the 
-wall with the first third part of reactor. 
+This is the PFR veriosn of "Auto_reactor_modell_surf.py". 
+The difference between this two is a way of simulation. In this PFR, simulation is conducted on 
+every single reactor individually till the steady state of every reactor is reached.
+Next, the new iteration starts which brings at the end the network of reactors to steady state.
+This is in contrary to the previous version where simulation is always conducted on all reactors simultaneously. 
 
--Without plots
--Outcome (Temp at the end) for 12 reactors is the same as for the "Finale_Version" from Moritz.
+- working & by iterations ~ 100 delivers good results
+- much faster than previous version
+- it is possible to simulate any number of reactors (much faster)
 """
 #######################################################################
 # Input Parameters
@@ -19,9 +21,10 @@ wall with the first third part of reactor.
 # of 'n_steps' stirred reactors.
 # IT MUST DIVISBLE BY 3!!!!
 n_steps = int(input('Number of reactors in the pfr system. The number must be divisible by 3!\n'))
-steps = int(input('Number of iterations for the pfr-reactor cylcle?\n'))
+iters = int(input('Number of iterations for the pfr-reactor cylcle?\n'))
 walls = int(input('Press 1 to activate walls for heat transfer\n'))
 
+# starts counting time
 start_time = time.time()
 
 # unit conversion factors to SI
@@ -32,18 +35,18 @@ T_0 = 1000.0  # inlet temperature [K]
 pressure = ct.one_atm  # constant pressure [Pa]
 composition_0 = 'CH4:1, O2:1.5, AR:0.1'
 
-#catalyst
+# catalyst
 # length = 0.3 * cm  # Catalyst bed length
 # area = 1.0 * cm**2  # Catalyst bed area
 cat_area_per_vol = 1000.0 / cm  # Catalyst particle surface area per unit volume
-initial_coverage_catalyst= 'O(S):0.00, PT(S):0.01, H(S):0.99' #Zeile selbst hizugefügt. Wert aus Mechanismus
+initial_coverage_catalyst = 'O(S):0.00, PT(S):0.01, H(S):0.99'  # Zeile selbst hizugefügt. Wert aus Mechanismus
 
-# Warum solche Angaben??
+# Warum solche Angaben?????????????
 length = 1.5e-7  # *approximate* PFR length [m]
 u_0 = .006  # inflow velocity [m/s]
 area = 1.e-4  # cross-sectional area [m**2]
 
-reaction_mechanism1 ='methane_pox_on_pt.cti'
+reaction_mechanism1 = 'methane_pox_on_pt.cti'
 
 # import the gas model and set the initial conditions
 gas = ct.Solution(reaction_mechanism1, 'gas')
@@ -64,34 +67,34 @@ for i, surf_obj in enumerate(surfs):
 cat_area = cat_area_per_vol * r_vol
 
 # Create ideal gas reactors
-reactors = [ct.IdealGasReactor(gas) for i in range (n_steps)]
+reactors = [ct.IdealGasReactor(gas) for i in range(n_steps)]
 
 # Add a volume to reactors
 for i, reactors_obj in enumerate(reactors):
-    reactors_obj.volume=r_vol
+    reactors_obj.volume = r_vol
 
 # Add walls between reactors on the opposite side of system
 if walls == 1:
-    n_walls = n_steps//3
+    n_walls = n_steps // 3
     # print(n_walls)
 
     for i in range(n_walls):
-        ct.Wall(reactors[i], reactors[n_steps-1-i], A=0.001, U=1.2)
+        ct.Wall(reactors[i], reactors[n_steps - 1 - i], A=0.001, U=1.2)
     print('Walls are active!')
 else:
     print('Wall are not active!')
 
 # create a reservoir to represent the reactor immediately upstream
-upstreams = [ct.Reservoir(gas) for i in range (n_steps)]
+upstreams = [ct.Reservoir(gas) for i in range(n_steps)]
 
 # create a downstream reservoir
-downstreams = [ct.Reservoir(gas) for i in range (n_steps)]
+downstreams = [ct.Reservoir(gas) for i in range(n_steps)]
 
 # Add the reacting surface to the reactor. The area is set to the desired
 # catalyst area in the reactor.
 rsurfs = []
 # Between 1/3 n_steps & 2/3 n_steps
-for i in range (n_steps//3,2*(n_steps//3)):
+for i in range(n_steps // 3, 2 * (n_steps // 3)):
     rsurfs.append(ct.ReactorSurface(surfs[i], reactors[i], A=cat_area))
 
 # The mass flow rate into the reactor will be fixed by using a
@@ -107,12 +110,11 @@ vpress = []
 for i in range(n_steps):
     vpress.append(ct.PressureController(reactors[i], downstreams[i], master=mflows[i], K=1e-5))
 
-sim = ct.ReactorNet(reactors)
 
 # "Länge" des Gesamtreaktors nach jedem Teilreaktor" ??
-z_vec=[]
+z_vec = []
 for i in range(n_steps):
-    z_vec.append(i*dz)
+    z_vec.append(i * dz)
 
 # Zustände in den Reaktoren
 dict_states = {}
@@ -125,13 +127,13 @@ dict_T = {}
 for i in range(n_steps):
     dict_T[i] = []
 
-#Create Lists for evaluation
-temp_profile=[]
-p_profile=[]
-X_CH4_profile=[]
-X_O2_profile=[]
-X_CO2_profile=[]
-X_H2O_profile=[]
+# Create Lists for evaluation
+temp_profile = []
+p_profile = []
+X_CH4_profile = []
+X_O2_profile = []
+X_CO2_profile = []
+X_H2O_profile = []
 
 # Create a list for velocity for every reactor
 u = []
@@ -140,38 +142,34 @@ t_r = []
 # Whole time
 t = []
 # Density in each reactor
-r_dens= []
+r_dens = []
 
 # The outer loop iterate through the given number of iterations for every pfr cycle
-for n in range(steps):
+for n in range(iters):
     # This loop iterate through all reactors
     for i in range(n_steps):
 
-        print(i, " Reactor")
+        # print(i, " Reactor")
+        # Define sim as simulation in one reactor
+        sim = ct.ReactorNet([reactors[i]])
 
         # Set the state of the reservoir to match that of the previous reactor
         if i > 0:
-            gas.TDY = reactors[i-1].thermo.TDY
+            gas.TDY = reactors[i - 1].thermo.TDY
         else:
             gas.TPX = T_0, pressure, composition_0
 
         upstreams[i].syncState()
 
-        # integrate the reactor forward in time until steady state is reached
-        # BUT here, is whole reactor network simulated?
+        # integrate the i reactor forward in time until steady state is reached
+
         sim.reinitialize()
         sim.advance_to_steady_state()
 
-        # compute velocity and transform into time
-        u.append(mass_flow_rate/area/reactors[i].density)
-        t_r.append(reactors[i].mass / mass_flow_rate)  # residence time in this reactor
-        t.append(t_r[i])
-        r_dens.append(reactors[i].thermo.density)
-
-        # Save temperature & thermo.state in each Reaktor
-        for j in range(n_steps):
-            dict_T[j].append(reactors[j].T)
-            dict_states[j].append(reactors[j].thermo.state)
+        # # Save temperature & thermo.state in each Reaktor
+        # for j in range(n_steps):
+        #     dict_T[j].append(reactors[j].T)
+        #     dict_states[j].append(reactors[j].thermo.state)
 
     ############## This is an attempt to remove one component from the solution #############
 
@@ -195,11 +193,17 @@ for n in range(steps):
     #             # print(gas.X[gas.species_index(compound.name)])
     #             # print(gas.X[gas.species_index(compound.name)])
     #############################################################################################
-    print('Reaktordurchlauf:\t', n+1)
-    # gas()
+    print('Reaktordurchlauf:\t', n + 1)
 
 # Creating lists with temp, pressure and species conc. for diagrams.
 for k in range(n_steps):
+
+    # compute velocity and transform into time
+    u.append(mass_flow_rate / area / reactors[k].density)
+    t_r.append(reactors[k].mass / mass_flow_rate)  # residence time in this reactor
+    t.append(t_r[k])
+    r_dens.append(reactors[k].thermo.density)
+
     temp_profile.append(reactors[k].T)
     p_profile.append(reactors[k].thermo.P)
     X_CH4_profile.append(reactors[k].thermo.X[gas.species_index('CH4')])
@@ -228,7 +232,7 @@ gas()
 #
 # plt.show()
 
-fig,(ax1, ax2) = plt.subplots(2,1)
+fig, (ax1, ax2) = plt.subplots(2, 1)
 fig.suptitle('Plots for evaluation of reactor')
 ax1.plot(z_vec, temp_profile)
 ax1.set_ylabel('Temperature profile')
@@ -239,11 +243,3 @@ ax2.set_xlabel('Reactor length')
 
 plt.show()
 print("--- %s seconds ---" % (time.time() - start_time))
-
-
-
-
-
-
-
-
