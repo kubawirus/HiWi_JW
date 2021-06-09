@@ -87,6 +87,7 @@ downstreams = [ct.Reservoir(gas) for i in range (n_steps)]
 # Add the reacting surface to the reactor. The area is set to the desired
 # catalyst area in the reactor.
 rsurfs = []
+# Between 1/3 n_steps & 2/3 n_steps
 for i in range (n_steps//3,2*(n_steps//3)):
     rsurfs.append(ct.ReactorSurface(surfs[i], reactors[i], A=cat_area))
 
@@ -143,6 +144,8 @@ for n in range(steps):
     # This loop iterate through all reactors
     for i in range(n_steps):
 
+        print(i, " Reactor")
+
         # Set the state of the reservoir to match that of the previous reactor
         if i > 0:
             gas.TDY = reactors[i-1].thermo.TDY
@@ -152,6 +155,7 @@ for n in range(steps):
         upstreams[i].syncState()
 
         # integrate the reactor forward in time until steady state is reached
+        # BUT here, is whole reactor network simulated?
         sim.reinitialize()
         sim.advance_to_steady_state()
 
@@ -166,7 +170,30 @@ for n in range(steps):
             dict_T[j].append(reactors[j].T)
             dict_states[j].append(reactors[j].thermo.state)
 
+    ############## This is an attempt to remove one component from the solution #############
+
+    # #     What species are present in the system
+    #     print(gas.species_names)
+    #     print(gas.X)
+    #     for ii, i_r in enumerate(reactors):
+    #         print(ii, i_r.thermo.X[0])
+    #     # This is not correct, it has to be done by relative reset H2.
+    #
+    #     print(reactors[i].thermo.molecular_weights)
+    #     for j, compound in enumerate(reactors[i].thermo.species()):
+    #         if reactors[i].thermo.molecular_weights[j] < 4.0:
+    #             print(compound)
+    #             X_excl = gas.species_index(compound.name)
+    #             T,P,X = reactors[i].thermo.TPX
+    #             # X[X_excl] = 0.0
+    #             reactors[i].thermo.TPX = T,P,X
+    #             reactors[i].syncState()
+    #             print(reactors[i].thermo.X[X_excl])
+    #             # print(gas.X[gas.species_index(compound.name)])
+    #             # print(gas.X[gas.species_index(compound.name)])
+    #############################################################################################
     print('Reaktordurchlauf:\t', n+1)
+    # gas()
 
 # Creating lists with temp, pressure and species conc. for diagrams.
 for k in range(n_steps):
@@ -179,7 +206,7 @@ for k in range(n_steps):
 
 # At the outlet from Reactor
 gas.TDY = reactors[n_steps - 1].thermo.TDY
-gas()
+# gas()
 
 # Plots:
 # plt.figure()
@@ -207,7 +234,7 @@ ax2.plot(z_vec, X_CH4_profile)
 ax2.set_ylabel('CH4 profile')
 ax2.set_xlabel('Reactor length')
 
-plt.show()
+# plt.show()
 
 
 
