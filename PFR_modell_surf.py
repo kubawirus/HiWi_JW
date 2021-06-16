@@ -1,7 +1,8 @@
 import cantera as ct
-# import numpy as np
+import numpy as np
 import matplotlib.pyplot as plt
 import time
+import test_gas
 """
 This is the PFR veriosn of "Auto_reactor_modell_surf.py". 
 The difference between this two is a way of simulation. In this PFR, simulation is conducted on 
@@ -12,6 +13,21 @@ This is in contrary to the previous version where simulation is always conducted
 - working & by iterations ~ 100 delivers good results
 - much faster than previous version
 - it is possible to simulate any number of reactors (much faster)
+
+TO DO:
+- Implement mech_13.yaml or other mechanisms as gri30.yaml
+    It has to have a 'Pt_surf' mechanism in the reaction to simulate it. There can be no reaction as 
+    surface reaction simulated that has no surface reaction mechanism in it. 
+    
+- Implement the reduced mechanism
+    Under which conditions the machanism should be reduced? The 'methane_pox_on_pt.cti' is not working because 
+    only the gas part of the reaction is taken into simulation. It has to be corrected!
+    Temp, Press, X, time, k?
+    
+- Carbon (H2) deposition mechanism
+
+NOT WORKING:
+- Removal of one component from the gas mixture after every reactor to simulate deposition
 """
 #######################################################################
 # Input Parameters
@@ -23,6 +39,7 @@ This is in contrary to the previous version where simulation is always conducted
 n_steps = int(input('Number of reactors in the pfr system. The number must be divisible by 3!\n'))
 iters = int(input('Number of iterations for the pfr-reactor cylcle?\n'))
 walls = int(input('Press 1 to activate walls for heat transfer\n'))
+mechanism = int(input('Press 0 for automatic methane, 1 to choose reduced methane pox on pt or Press 2 to choose mech_13\n'))
 
 # starts counting time
 start_time = time.time()
@@ -34,6 +51,8 @@ minute = 60.0
 T_0 = 1000.0  # inlet temperature [K]
 pressure = ct.one_atm  # constant pressure [Pa]
 composition_0 = 'CH4:1, O2:1.5, AR:0.1'
+# oder 'C3H8:10, H2:1'
+initial_state = T_0, pressure, composition_0
 
 # catalyst
 # length = 0.3 * cm  # Catalyst bed length
@@ -46,11 +65,16 @@ length = 1.5e-7  # *approximate* PFR length [m]
 u_0 = .006  # inflow velocity [m/s]
 area = 1.e-4  # cross-sectional area [m**2]
 
-reaction_mechanism1 = 'methane_pox_on_pt.cti'
+if mechanism > 0:
+    # Calling a function from another script to choose the desired mechanism after reduction
+    gas, reaction_mechanism1 = test_gas.gas_funct(mechanism, initial_state)
+else:
+    reaction_mechanism1 = 'methane_pox_on_pt.cti'
+    # import the gas model and set the initial conditions
+    gas = ct.Solution(reaction_mechanism1, 'gas')
 
-# import the gas model and set the initial conditions
-gas = ct.Solution(reaction_mechanism1, 'gas')
-gas.TPX = T_0, pressure, composition_0
+
+gas.TPX = initial_state
 
 mass_flow_rate = u_0 * gas.density * area
 dz = length / n_steps
@@ -130,6 +154,7 @@ for i in range(n_steps):
 # Create Lists for evaluation
 temp_profile = []
 p_profile = []
+H2_profile = []
 X_CH4_profile = []
 X_O2_profile = []
 X_CO2_profile = []
@@ -166,33 +191,37 @@ for n in range(iters):
         sim.reinitialize()
         sim.advance_to_steady_state()
 
+        # print("Upstream: ", i, upstreams[i].thermo.X[0], "\n")
+        # print("Reactor: ", i, reactors[i].thermo.X[0], "\n")
+        # print("Downstream: ", i, downstreams[i].thermo.X[0], "\n")
+
         # # Save temperature & thermo.state in each Reaktor
         # for j in range(n_steps):
         #     dict_T[j].append(reactors[j].T)
         #     dict_states[j].append(reactors[j].thermo.state)
 
-    ############## This is an attempt to remove one component from the solution #############
-
+    ############# This is an attempt to remove one component from the solution #############
+    #
     # #     What species are present in the system
-    #     print(gas.species_names)
-    #     print(gas.X)
-    #     for ii, i_r in enumerate(reactors):
-    #         print(ii, i_r.thermo.X[0])
+    # #     print(gas.species_names)
+    # #     print(gas.X)
+    # #     for ii, i_r in enumerate(reactors):
+    # #         print(ii, i_r.thermo.X[0])
     #     # This is not correct, it has to be done by relative reset H2.
     #
-    #     print(reactors[i].thermo.molecular_weights)
+    #     # print(reactors[i].thermo.molecular_weights)
     #     for j, compound in enumerate(reactors[i].thermo.species()):
     #         if reactors[i].thermo.molecular_weights[j] < 4.0:
-    #             print(compound)
+    #             # print(compound)
     #             X_excl = gas.species_index(compound.name)
     #             T,P,X = reactors[i].thermo.TPX
-    #             # X[X_excl] = 0.0
+    #             X[X_excl] = X[X_excl]*0.1
     #             reactors[i].thermo.TPX = T,P,X
     #             reactors[i].syncState()
-    #             print(reactors[i].thermo.X[X_excl])
+    #             # print(reactors[i].thermo.X[X_excl])
     #             # print(gas.X[gas.species_index(compound.name)])
     #             # print(gas.X[gas.species_index(compound.name)])
-    #############################################################################################
+    ############################################################################################
     print('Reaktordurchlauf:\t', n + 1)
 
 # Creating lists with temp, pressure and species conc. for diagrams.
@@ -206,6 +235,7 @@ for k in range(n_steps):
 
     temp_profile.append(reactors[k].T)
     p_profile.append(reactors[k].thermo.P)
+    H2_profile.append(reactors[k].thermo.X[gas.species_index('H2')])
     X_CH4_profile.append(reactors[k].thermo.X[gas.species_index('CH4')])
     X_O2_profile.append(reactors[k].thermo.X[gas.species_index('O2')])
     X_CO2_profile.append(reactors[k].thermo.X[gas.species_index('CO2')])
@@ -232,14 +262,18 @@ gas()
 #
 # plt.show()
 
-fig, (ax1, ax2) = plt.subplots(2, 1)
+fig, (ax1, ax2, ax3) = plt.subplots(3, 1)
 fig.suptitle('Plots for evaluation of reactor')
 ax1.plot(z_vec, temp_profile)
 ax1.set_ylabel('Temperature profile')
 
 ax2.plot(z_vec, X_CH4_profile)
 ax2.set_ylabel('CH4 profile')
+
+ax3.plot(z_vec, H2_profile)
+ax3.set_ylabel('H2 profile')
 ax2.set_xlabel('Reactor length')
 
 plt.show()
+
 print("--- %s seconds ---" % (time.time() - start_time))
