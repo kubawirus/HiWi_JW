@@ -109,7 +109,7 @@ else:
     print('Wall are not active!')
 
 # create a reservoir to represent the reactor immediately upstream
-upstreams = [ct.Reservoir(gas) for i in range(n_steps)]
+upstreams = [ct.Reservoir(gas) for i in range(n_steps + 1)]
 
 # create a downstream reservoir
 downstreams = [ct.Reservoir(gas) for i in range(n_steps)]
@@ -133,6 +133,7 @@ for i in range(n_steps):
 vpress = []
 for i in range(n_steps):
     vpress.append(ct.PressureController(reactors[i], downstreams[i], master=mflows[i], K=1e-5))
+    # vpress.append(ct.Valve(reactors[i], downstreams[i], K=1e-5))
 
 
 # "Länge" des Gesamtreaktors nach jedem Teilreaktor" ??
@@ -169,59 +170,83 @@ t = []
 # Density in each reactor
 r_dens = []
 
+q1=ct.Quantity(gas)
+print("There is ", q1.moles , "moles gas in system\n")
+
+
+
 # The outer loop iterate through the given number of iterations for every pfr cycle
 for n in range(iters):
     # This loop iterate through all reactors
     for i in range(n_steps):
 
+        # print(reactors[i].inlets)
+        # print(reactors[i].outlets)
         # print(i, " Reactor")
         # Define sim as simulation in one reactor
         sim = ct.ReactorNet([reactors[i]])
 
-        # Set the state of the reservoir to match that of the previous reactor
+        # Set the state of the gas to the upstream reservoir that is equal to downstream from previos simulation
         if i > 0:
-            gas.TDY = reactors[i - 1].thermo.TDY
+            gas.TPX = upstreams[i].thermo.TPX
+            # gas.TDY = downstreams[i-1].thermo.TDY
+            # gas.TDY = reactors[i - 1].thermo.TDY
+
         else:
             gas.TPX = T_0, pressure, composition_0
 
-        upstreams[i].syncState()
-
         # integrate the i reactor forward in time until steady state is reached
+        # upstreams[i].syncState()
 
         sim.reinitialize()
         sim.advance_to_steady_state()
 
-        # print("Upstream: ", i, upstreams[i].thermo.X[0], "\n")
-        # print("Reactor: ", i, reactors[i].thermo.X[0], "\n")
-        # print("Downstream: ", i, downstreams[i].thermo.X[0], "\n")
+        downstreams[i].syncState()
+
+        ############ This is an attempt to remove one component from the solution #############
+        # Check if reactive part of reactor
+        if n_steps // 3 <= i < (2 * n_steps)//3:
+            # For every compound in the reactor show only these with mol. weight ...
+            for j, compound in enumerate(reactors[i].thermo.species()):
+                if reactors[i].thermo.molecular_weights[j] < 4.0:
+                    # print(compound.name)
+                    name_X_excl = compound.name
+                    X_excl = gas.species_index(compound.name)
+                    T,P,X = downstreams[i].thermo.TPX
+                    X[X_excl] = 0.0
+                    upstreams[i+1].thermo.TPX = T,P,X
+                    upstreams[i+1].syncState()
+
+                    q = ct.Quantity(gas)
+                    # print("Moles gas: ", q.moles)
+                    mol_down = q.moles * downstreams[i - 1].thermo.X[X_excl]
+                    # print("Moles ",name_X_excl,": ", mol_down)
+
+                    mol_after = q.moles - mol_down
+                    q.moles = mol_after
+                    # print(mol_after)
+                    # print("Moles gas after change: ", q.moles)
+        # When not in the reactive part set the upstream i+1 equal to downstrem i
+        else:
+            upstreams[i+1].thermo.TPX = downstreams[i].thermo.TPX
+            upstreams[i+1].syncState()
+
+
+
+        # print("Upstream: ", i, upstreams[i].thermo.X, "\n")
+        #
+        # print("Reactor: ", i, reactors[i].thermo.X, "\n")
+        #
+        # print("Downstream: ", i, downstreams[i].thermo.X, "\n")
+
+        ###########################################################################################
+
 
         # # Save temperature & thermo.state in each Reaktor
         # for j in range(n_steps):
         #     dict_T[j].append(reactors[j].T)
         #     dict_states[j].append(reactors[j].thermo.state)
 
-    ############# This is an attempt to remove one component from the solution #############
-    #
-    # #     What species are present in the system
-    # #     print(gas.species_names)
-    # #     print(gas.X)
-    # #     for ii, i_r in enumerate(reactors):
-    # #         print(ii, i_r.thermo.X[0])
-    #     # This is not correct, it has to be done by relative reset H2.
-    #
-    #     # print(reactors[i].thermo.molecular_weights)
-    #     for j, compound in enumerate(reactors[i].thermo.species()):
-    #         if reactors[i].thermo.molecular_weights[j] < 4.0:
-    #             # print(compound)
-    #             X_excl = gas.species_index(compound.name)
-    #             T,P,X = reactors[i].thermo.TPX
-    #             X[X_excl] = X[X_excl]*0.1
-    #             reactors[i].thermo.TPX = T,P,X
-    #             reactors[i].syncState()
-    #             # print(reactors[i].thermo.X[X_excl])
-    #             # print(gas.X[gas.species_index(compound.name)])
-    #             # print(gas.X[gas.species_index(compound.name)])
-    ############################################################################################
     print('Reaktordurchlauf:\t', n + 1)
 
 # Creating lists with temp, pressure and species conc. for diagrams.
@@ -244,6 +269,9 @@ for k in range(n_steps):
 # At the outlet from Reactor
 gas.TDY = reactors[n_steps - 1].thermo.TDY
 gas()
+
+q2 = ct.Quantity(gas)
+print("Moles after the simulation: ", q2.moles)
 
 # Plots:
 # plt.figure()
@@ -276,4 +304,4 @@ ax2.set_xlabel('Reactor length')
 
 plt.show()
 
-print("--- %s seconds ---" % (time.time() - start_time))
+print("\n--- %s seconds ---" % (time.time() - start_time))
