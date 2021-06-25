@@ -5,22 +5,22 @@ import matplotlib.pyplot as plt
 def gas_funct(mechanism, initial_state):
 
     # choosing mechanism of reaction
-    gas_mech = 'methane_pox_on_pt.cti'
+    # gas_mech = 'mech_13.yaml'
 
     if mechanism == 1:
-        gas_mech = 'methane_pox_on_pt.cti'
+        gas_mech = 'mech_13.yaml'
     elif mechanism == 2:
-        gas_mech  = 'gri30.yaml'
+        gas_mech = 'gri30.yaml'
     print('Reaction mechanism selected to: ', gas_mech, "\n")
 
     gas = ct.Solution(gas_mech)
-    gas()
+    # gas()
     # Here is the initial conditions are defined
     # initial_state = 873.0, ct.one_atm, 'C3H8:10, H2:1'
 
     # Run a simulation with the full mechanism
     gas.TPX = initial_state
-    gas()
+    # gas()
     print(gas.n_reactions)
     r = ct.IdealGasConstPressureReactor(gas)
     sim = ct.ReactorNet([r])
@@ -31,8 +31,8 @@ def gas_funct(mechanism, initial_state):
     # Rmax is the maximum relative reaction rate at any timestep. An Array of size n_reactions full of zeros is created
     Rmax = np.zeros(gas.n_reactions)
     # It does not print any reactions!!! Maybe due to 2 phases inside this mechanism. For gri the reactions are printed!
-    print(Rmax)
-    while t < 0.1:
+    # print(Rmax)
+    while t < 0.5:
         t = sim.step()
         tt.append(1000 * t)
         TT.append(r.T)
@@ -58,24 +58,24 @@ def gas_funct(mechanism, initial_state):
         else:
             break
 
-    print(reactions)
+    # print(reactions)
 
     # find the species involved in these reactions. At a minimum, include all
     # species in the reactant mixture`
-    species_names = {initial_state[2]}
+    species_names = {'C3H8', 'H2'}
     for reaction in reactions:
         species_names.update(reaction.reactants)
         species_names.update(reaction.products)
 
     # Get the species objects
     species = [gas.species(name) for name in species_names]
-    print(species)
+    # print(species)
 
     # create the new reduced mechanism
     gas2 = ct.Solution(thermo='IdealGas', kinetics='GasKinetics',
                        species=species, reactions=reactions)
     # show gas2
-    gas2()
+    # gas2()
 
     # write a new txt file to review the existing species in gas2
     f = open("species_reduced.txt", "w")
