@@ -1,10 +1,10 @@
-
 import cantera as ct
 import numpy as np
 import matplotlib.pyplot as plt
 import time
 import V_N
 import Reduction_mech
+import json
 
 # Resolution: The PFR will be simulated by 'n_steps' time steps or by a chain
 # of 'n_steps' stirred reactors.
@@ -32,7 +32,6 @@ composition_0 = 'C3H8:10, H2:1'
 initial_state = T_0, pressure, composition_0
 reactive_state = T_wall, pressure, composition_0
 
-
 # Here the reaction mechanism will be choosed
 if mechanism > 0:
     # Calling a function from another script to choose the desired mechanism after reduction
@@ -47,12 +46,13 @@ gas.TPX = T_0_n, pressure, composition_0
 gas()
 
 # Reactor geometry
-vol_flow_rate_N = 1.6664e-6 # [m3/s] volumen flow standarized for 273K
-vol_flow_rate = V_N.vol_norm(vol_flow_rate_N, gas, T_0, pressure) #[m3/s]
+vol_flow_rate_N = 1.6664e-6  # [m3/s] volumen flow standarized for 273K
+vol_flow_rate = V_N.vol_norm(vol_flow_rate_N, gas, T_0, pressure)  # [m3/s]
 length = 0.1  # *approximate* PFR length [m]
 area = 0.00024  # cross-sectional area [m**2]
-u_0 = vol_flow_rate/area # inflow velocity [m/s]
-height = 0.006 #[m]
+u_0 = vol_flow_rate / area  # inflow velocity [m/s]
+height = 0.006  # [m]
+depth = 0.04  # [m]
 
 # Back to initial state
 gas.TPX = initial_state
@@ -62,9 +62,10 @@ gas()
 mass_flow_rate_0 = u_0 * gas.density * area
 dz = length / n_steps
 r_vol = area * dz
+A_wall = 2 * height * dz + 2 * depth * dz
 
 # create a new reactor
-reactor = ct.IdealGasReactor(contents = gas, energy = 'on')
+reactor = ct.IdealGasReactor(contents=gas, energy='on')
 reactor.volume = r_vol
 
 # create a reservoir to represent the reactor immediately upstream. Note
@@ -102,55 +103,65 @@ z_vec = []
 for i in range(n_steps + 1):
     z_vec.append(i * dz)
 # moles
-moles = [0]*(n_steps+1)
+moles = [0] * (n_steps + 1)
 # mass flows
-mflow = [0]*(n_steps+1)
-mflow [0] = mass_flow_rate_0
+mflow = [0] * (n_steps + 1)
+mflow[0] = mass_flow_rate_0
 # mole flow
-mol_flow = [0]*(n_steps+1)
+mol_flow = [0] * (n_steps + 1)
 mol_flow[0] = mass_flow_rate_0 / reactor.thermo.mean_molecular_weight
+# velocity through the reactor
+u = [0] * (n_steps + 1)
+u[0] = u_0
 # This dictionary is for saving the next reactor state. After every loop it will be reconstructed from this data.
-state_list = [0]*(n_steps+1)
-state_list[0] = reactor.thermo.TDY
+state_list = [0] * (n_steps + 1)
+state_list[0] = reactor.thermo.TPY
 # mass in every reactor
-mass = [0]*(n_steps+1)
+mass = [0] * (n_steps + 1)
 mass[0] = reactor.mass
 # pressure in every reactor
-p_profile = [0]*(n_steps+1)
+p_profile = [0] * (n_steps + 1)
 p_profile[0] = reactor.thermo.P
 # temp profile
-T_profile = [0]*(n_steps+1)
+T_profile = [0] * (n_steps + 1)
 T_profile[0] = reactor.T
 # density profile
-D_profile = [0]*(n_steps+1)
+D_profile = [0] * (n_steps + 1)
 D_profile[0] = reactor.density
+# Time in reactive part
+t_react = 0
 
 # Create a dictionary for storing deposition components and their moles
 depo = {}
-mass_depo = []
+depo_r = {}
+mass_depo = [0] * (n_steps + 1)
 
 # iterate through the PFR cells
 
 """
-Pomysł jak roziwązać problem zmiennego natężenia przepływu:
-1) Stworzyć struktury danych do przechowywania każdego stanu poszczególnego reaktora. 
-2) Po każdym reaktorze (n_step) zapisać na końcu nowy stan reaktora oraz nowy strumień masy.
-3) Termodynamika gazu oraz przepływ masowy każdego kolejnego reaktora 
-    będą definiowane przez poprzedni stan zapisany w odpowiedniej strukturze.
-4) Symulacja.
-5) Usunięcie związku. Obliczenie nowego przepływu masowego w oparciu o poprzedni.
-6) Nowa iteracja może nadpisywać poprzednią. (Może??) 
-7) Stworzyć wykresy przepływu masowego przez sieć reaktorów.
+An idea on how to solve the variable flow rate problem:
+1) Create data structures to store each individual reactor state. 
+2) After each reactor (n_step) store the new reactor state and the new mass flow at the end.
+3) The gas thermodynamics and mass flow of each subsequent reactor 
+    will be defined by the previous state stored in the corresponding structure.
+4) Simulation.
+5) Removal of the compound. Calculation of a new mass flow based on the previous one.
+6) The new iteration may overwrite the previous one. (Maybe??). 
+7) Create mass flow graphs through the reactor network.
 
-Problemy: 
-8) Połączyć przepływ masowy z ciśnieniem w reaktorze!! Wydaje się, że ciśnienie jest utrzymywane stałe w reaktorze. 
-9) Co ma być stałe, przepływ masowy czy np przepływ obj czyli tylko prędkość?!(Kluczowe!!!)
-10) Porównać dwie metody symulacji bez depozycji. 
-11) Napisać tak depozycje, żeby kolejne elementy usuwały się "addytywnie"
-12) Jak przy depozycji obliczyć gęstość?
-13) Stworzyć dict który zapisuje i najlepiej dodaje depozycje z kazdego reaktora!!!
-14) Sprawdzic jakie elementy najciezsze mozna deponowac w gri30 zeby bylo szybciej niz w mech_13
+Problems: 
+8) Link mass flow to reactor pressure!!! It seems that the pressure is held constant in the reactor. 
+ -> Pressure should remain const.
+9) What should be constant, mass flow or e.g. volume flow, i.e. velocity only?!(Key!!!)
+ -> mass flow rate is also const.
+10) Compare the two simulation methods without deposition. 
+11) Write the deposition in such a way that successive elements are removed "additively".-> Done
+12) How to calculate density with deposition? !!!!!!!! -> deprecated
+13) Create a dict that records and ideally adds deposits from each reactor -> Done
+14) Check which heaviest elements can be deposited in gri30 to make it faster than in mech_13 -> Done (Only ~ 40 g/mol)
+15) Plot deposition through the length of reactor 
 """
+
 # for i in range (iters) :
 #     # To reset the old state
 #     reactor = ct.IdealGasReactor(contents = gas, energy = 'on')
@@ -159,115 +170,150 @@ for n in range(n_steps):
     # reactor.thermo.TDY.clear()
     reactor.walls.clear()
     # create wall for heat exchange. What Wall area [m^2] and Overall heat transfer coefficient [W/m^2]??
-    if (n_steps // 4) <= n < (3 * (n_steps // 4)):
-        ct.Wall(heat_reserv, reactor, A=dz * height, U=100)
+    if n < (3 * (n_steps // 4)):
+        ct.Wall(heat_reserv, reactor, A=A_wall, U=50)
+        t_react += reactor.mass / mflow[n]
     else:
-        ct.Wall(env_reserv, reactor, A=dz * height, U=100)
+        ct.Wall(env_reserv, reactor, A=A_wall, U=50)
 
     sim2 = ct.ReactorNet([reactor])
 
     # Set the state of the reservoir to match that of the previous reactor
-    gas.TDY = state_list[n]
+    gas.TPY = state_list[n]
     upstream.syncState()
     # integrate the reactor forward in time until steady state is reached
     sim2.reinitialize()
     sim2.advance_to_steady_state()
 
     T = reactor.T
-    D = reactor.density
+    P = reactor.thermo.P
     Y = reactor.Y
 
-    p_profile[n+1] = reactor.thermo.P
-    T_profile[n+1] = T
-    D_profile[n+1] = D
+    p_profile[n + 1] = reactor.thermo.P
+    T_profile[n + 1] = T
+
     ############## REMOVE ONE COMPONENT FROM THE REACTOR NET ###########
 
     # remove water after every reactor
     if remove == 1:
-        # Open txt file to save deposited components and moles
-        # f = open("Deposition_DepoTest.txt", "w")
-        # f.write("This is a text file where all deposited compounds are saved\n\n")
 
-        mass[n+1] = reactor.mass
-        mass_flow_now = D * u_0 * area
-        mflow [n+1] = mass_flow_now
-        mol_flow[n+1] = mass_flow_now / reactor.thermo.mean_molecular_weight
-        state_list[n+1] = (T, D, Y)
+        # These are entry data if no compounds was removed
+        mass[n + 1] = reactor.mass
+        mass_flow_now = mflow[n]
+        mflow[n + 1] = mass_flow_now
+        mol_flow[n + 1] = mass_flow_now / reactor.thermo.mean_molecular_weight
+        state_list[n + 1] = (T, P, Y)
+        mass_depo[n] = 0.0
 
         # For every compound in the reactor show only these with mol. weight ...
         # These will be set to 0.0
         for j, compound in enumerate(reactor.thermo.species()):
-            if reactor.thermo.molecular_weights[j] > 80.0:
+
+            if 30.0 > reactor.thermo.molecular_weights[j] > 20.00:
 
                 name_Y_excl = compound.name
                 Y_excl = gas.species_index(compound.name)
 
-                if n == 0:
-                    dict[str(name_Y_excl)] = 0.0
+                if name_Y_excl not in depo.keys():
+                    depo[name_Y_excl] = 0.0
+                    depo_r[name_Y_excl] = []
 
-                mass[n+1] -= reactor.mass * Y[Y_excl]
+                # Mass in reactor
+                mass[n + 1] -= reactor.mass * Y[Y_excl]
+
+                # Density in reactor after deposition
+                # D -= reactor.mass * Y[Y_excl] / reactor.volume # Is that correct?!
+
                 # Part of the mass flow that is deposited in one slicereactor
                 mass_flow_rate_down = mass_flow_now * Y[Y_excl]
-                # # Sum of deposited mass
-                # mass_depo[Y_excl] += mass_flow_rate_down
+                # Sum of deposited mass
+                mass_depo[n] += mass_flow_rate_down
                 # Set new mass flow rate in upstream
-                mflow[n+1] -= mass_flow_rate_down
+                mflow[n + 1] -= mass_flow_rate_down
                 # Set new mol flow rate in the upstream
-                mol_flow[n+1] -= mass_flow_rate_down / gas.molecular_weights[Y_excl]
+                mol_flow[n + 1] -= mass_flow_rate_down / gas.molecular_weights[Y_excl]
 
                 # Set new mass fraction after deposition (later it can be a function)
                 Y[Y_excl] = 0.0
-                state_list[n+1] = (T, D, Y)
+                state_list[n + 1] = (T, P, Y)
 
                 # Save deposited compound and moles in a dict.
-                depo[str(name_Y_excl)] += mass_flow_rate_down
+                depo[name_Y_excl] += mass_flow_rate_down
+                depo_r[name_Y_excl].append(mass_flow_rate_down)
 
-        # # write these data also to a txt file
-        # f.write(name_Y_excl + " " + str(mass_flow_rate_down) + "\n")
-        # f.close()
         # Set a new value for mass flow in the upstream
-        m.mass_flow_rate = mflow[n+1]
+        m.mass_flow_rate = mflow[n + 1]
+        u[n+1] = mflow[n+1]/area*reactor.density
         upstream.syncState()
     else:
-        mass [n+1] = reactor.mass
-        m.mass_flow_rate = D * u_0 * area
-        mflow [n+1] = m.mass_flow_rate
-        mol_flow[n+1] = m.mass_flow_rate / reactor.thermo.mean_molecular_weight
-        state_list[n+1] = (T, D, Y)
+        mass[n + 1] = reactor.mass
+        mflow[n + 1] = mflow[n]
+        u[n + 1] = mflow[n + 1] / area * reactor.density
+        mol_flow[n + 1] = mflow[n + 1] / reactor.thermo.mean_molecular_weight
+        state_list[n + 1] = (T, P, Y)
         upstream.syncState()
 ########################################################################
 gas()
+
+# Creating a file to store deposited compounds and their mass flow rate
+if remove == 1:
+    f = open("Deposition.txt", "w")
+    f.write("Comp.: MFR[kg/s]:\n\n")
+    for key in depo:
+        f.write(key + ": " + str(depo[key]) + "\n")
+    f.close()
+
+# Look for the compound that has a biggest sum of deposition
+# Compound with biggest deposition
+depo_comp_name = min(depo,key=depo.get)
+print(depo_comp_name)
+depo_comp_reactor = []
+depo_comp_reactor.append(0.0)
+for i in range(n_steps):
+    depo_comp_reactor.append(depo_r[depo_comp_name][i])
 
 ###################################################################
 # Compare Results in matplotlib
 ###################################################################
 fig, (ax1, ax2, ax3) = plt.subplots(3, 1)
 fig.suptitle('Plots for evaluation of reactor T & p')
-ax1.plot(z_vec,p_profile) #[s[1] for s in state_list]
-ax1.set_ylabel('Pressure')
+ax1.plot(z_vec, p_profile)  # [s[1] for s in state_list]
+ax1.set_ylabel('Pressure [Pa]')
 
 ax2.plot(z_vec, T_profile)
-ax2.set_ylabel('Temperature')
+ax2.set_ylabel('Temperature [K]')
 
-ax3.plot(z_vec, D_profile)
-ax3.set_ylabel('Density')
+ax3.plot(z_vec, u)
+ax3.set_ylabel('Velocity [m/s]')
 
-ax2.set_xlabel('Reactor length')
+ax2.set_xlabel('Reactor length [m]')
 
-
-fig2, (ax3, ax4, ax5) = plt.subplots(3, 1)
+fig2, (ax4, ax5, ax6) = plt.subplots(3, 1)
 fig2.suptitle('Flow rates & mass across the reactor')
-ax3.plot(z_vec, mflow)
-ax3.set_ylabel('mass flow rate')
+ax4.plot(z_vec, mflow)
+ax4.set_ylabel('mass flow rate [kg/s]')
 
-ax4.plot(z_vec, mol_flow)
-ax4.set_ylabel('mol flow rate')
+ax5.plot(z_vec, mol_flow)
+ax5.set_ylabel('mol flow rate [mol/s]')
 
-ax5.plot(z_vec, mass)
-ax5.set_ylabel('mass across reactor')
+ax6.plot(z_vec, mass)
+ax6.set_ylabel('mass across reactor [kg]')
 
-ax5.set_xlabel('Reactor length')
+ax6.set_xlabel('Reactor length [m]')
+
+fig3, (ax7, ax8) = plt.subplots(2,1)
+fig3.suptitle('Deposition across the reactor')
+
+ax7.plot(z_vec, mass_depo)
+ax7.set_ylabel('sum of depo across reactor [kg/s]')
+
+ax8.plot(z_vec, depo_comp_reactor)
+ax8.set_ylabel(depo_comp_name + ' depo across the reactor')
+
+ax8.set_xlabel('Reactor length [m]')
 
 plt.show()
 
-print("--- %s seconds ---" % (time.time() - start_time))
+print("\nResidence time in reactive Part = ", t_react, " s")
+
+print("\n--- %s seconds ---" % (time.time() - start_time))
