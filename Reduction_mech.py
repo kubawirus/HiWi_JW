@@ -7,9 +7,9 @@ def gas_funct(mechanism, initial_state):
     # choosing mechanism of reaction
     # gas_mech = 'mech_13.yaml'
 
-    if mechanism == 1:
+    if mechanism == 2:
         gas_mech = 'mech_13.yaml'
-    elif mechanism == 2:
+    elif mechanism == 1:
         gas_mech = 'gri30.yaml'
     print('Reaction mechanism selected to: ', gas_mech, "\n")
 
@@ -20,7 +20,7 @@ def gas_funct(mechanism, initial_state):
 
     # Run a simulation with the full mechanism
     gas.TPX = initial_state
-    # gas()
+    gas()
     print(gas.n_reactions)
     r = ct.IdealGasConstPressureReactor(gas)
     sim = ct.ReactorNet([r])
@@ -92,7 +92,7 @@ def gas_funct(mechanism, initial_state):
 
     tt = []
     TT = []
-    while t < 0.1:
+    while t < 0.5:
         t = sim.step()
         tt.append(1000 * t)
         TT.append(r.T)

@@ -135,6 +135,7 @@ t_react = 0
 depo = {}
 depo_r = {}
 mass_depo = [0] * (n_steps + 1)
+sum_depo = 0.0
 
 # iterate through the PFR cells
 
@@ -209,7 +210,7 @@ for n in range(n_steps):
         # These will be set to 0.0
         for j, compound in enumerate(reactor.thermo.species()):
 
-            if 30.0 > reactor.thermo.molecular_weights[j] > 20.00:
+            if reactor.thermo.molecular_weights[j] > 80.00:
 
                 name_Y_excl = compound.name
                 Y_excl = gas.species_index(compound.name)
@@ -226,8 +227,10 @@ for n in range(n_steps):
 
                 # Part of the mass flow that is deposited in one slicereactor
                 mass_flow_rate_down = mass_flow_now * Y[Y_excl]
-                # Sum of deposited mass
+                # Sum of deposited mass across reactor
                 mass_depo[n] += mass_flow_rate_down
+                # And whole summed deposited mass
+                sum_depo += mass_flow_rate_down
                 # Set new mass flow rate in upstream
                 mflow[n + 1] -= mass_flow_rate_down
                 # Set new mol flow rate in the upstream
@@ -265,7 +268,7 @@ if remove == 1:
 
 # Look for the compound that has a biggest sum of deposition
 # Compound with biggest deposition
-depo_comp_name = min(depo,key=depo.get)
+depo_comp_name = max(depo,key=depo.get)
 print(depo_comp_name)
 depo_comp_reactor = []
 depo_comp_reactor.append(0.0)
@@ -313,6 +316,9 @@ ax8.set_ylabel(depo_comp_name + ' depo across the reactor')
 ax8.set_xlabel('Reactor length [m]')
 
 plt.show()
+
+# Check if sum depo is equal to mass flow rate difference:
+print("\n sum depo: ", sum_depo, " mfr difference: ", mass_flow_rate_0 - mflow[n_steps])
 
 print("\nResidence time in reactive Part = ", t_react, " s")
 
