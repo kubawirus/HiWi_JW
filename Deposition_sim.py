@@ -6,21 +6,19 @@ import V_N
 import Reduction_mech
 import json
 
-# Resolution: The PFR will be simulated by 'n_steps' time steps or by a chain
-# of 'n_steps' stirred reactors.
 
-#######################################################################
-# Input Parameters
-#######################################################################
+##################### INPUT DATA FROM TERMINAL ########################
+
 n_steps = int(input('Number of reactors in the pfr system. The number must be divisible by 4!\n'))
 # iters = int(input('Number of iterations for the pfr-reactor cylcle?\n'))
 mechanism = int(input('Press 0 for automatic gri_30, 1 to choose reduced gri30 or Press 2 to choose mech_13\n'))
 remove = int(input('Should all heavy components be removed after every reactor? 1- yes 0- no\n'))
 
-# starts counting time
+# starts counting time in which program runs
 start_time = time.time()
 
-# DATA
+#################### INPUT DATA #######################################
+# relative temperature [K]
 T_0_n = 273.0
 # inlet temperature [K]
 T_0 = 473.0
@@ -28,40 +26,51 @@ T_0 = 473.0
 T_wall = 873.0
 # constant pressure [Pa]
 pressure = ct.one_atm
+# flow rate [m3/s] volumen flow standarized for 273K
+vol_flow_rate_N = 1.6664e-6
+# composition
 composition_0 = 'C3H8:10, H2:1'
 initial_state = T_0, pressure, composition_0
 reactive_state = T_wall, pressure, composition_0
 
-# Here the reaction mechanism will be choosed
+# Reactor geometry
+length = 0.1  # *approximate* PFR length [m]
+area = 0.00024  # cross-sectional area [m**2]
+height = 0.006  # [m]
+depth = 0.04  # [m]
+
+####################### INITIAL CALCULATIONS & CREATING OBJECTS #############################
+
+# Here the reaction mechanism will be chosen. The default mechanism is gri30.yaml
 if mechanism > 0:
-    # Calling a function from another script to choose the desired mechanism after reduction
+    # Calling a function from "Reduction_mech.py" to choose the desired mechanism after reduction.
+    # Change of mechanism is avaliable through this named file.
     gas, reaction_mechanism1 = Reduction_mech.gas_funct(mechanism, reactive_state)
 else:
     reaction_mechanism1 = 'gri30.yaml'
     # import the gas model and set the initial conditions
     gas = ct.Solution(reaction_mechanism1)
 
+# calculate a flow rate & velocity
+vol_flow_rate = V_N.vol_norm(vol_flow_rate_N, gas, T_0, pressure)  # [m3/s]
+u_0 = vol_flow_rate / area  # inflow velocity [m/s]
+
 # State with standard temp 273 for vol. calculation
 gas.TPX = T_0_n, pressure, composition_0
 gas()
-
-# Reactor geometry
-vol_flow_rate_N = 1.6664e-6  # [m3/s] volumen flow standarized for 273K
-vol_flow_rate = V_N.vol_norm(vol_flow_rate_N, gas, T_0, pressure)  # [m3/s]
-length = 0.1  # *approximate* PFR length [m]
-area = 0.00024  # cross-sectional area [m**2]
-u_0 = vol_flow_rate / area  # inflow velocity [m/s]
-height = 0.006  # [m]
-depth = 0.04  # [m]
 
 # Back to initial state
 gas.TPX = initial_state
 gas()
 
 # Calculate other data
+# mass flow rate
 mass_flow_rate_0 = u_0 * gas.density * area
+# reactor slice length
 dz = length / n_steps
+# Volume of every slice reactor
 r_vol = area * dz
+# Side wall area of slice reactor (for heat exchange) Q. AT THIS POINT
 A_wall = 2 * height * dz + 2 * depth * dz
 
 # create a new reactor
@@ -97,8 +106,9 @@ gas_200.TPX = 473.0, 5e+5, 'H2O:1'
 # gas3()
 env_reserv = ct.Reservoir(gas_200)
 
-####### Initializing some lists for holding results ##########
-# "Länge" des Gesamtreaktors nach jedem Teilreaktor" ??
+################## Initializing some lists for holding results  ##################
+
+# Length of the whole reactor
 z_vec = []
 for i in range(n_steps + 1):
     z_vec.append(i * dz)
@@ -113,7 +123,7 @@ mol_flow[0] = mass_flow_rate_0 / reactor.thermo.mean_molecular_weight
 # velocity through the reactor
 u = [0] * (n_steps + 1)
 u[0] = u_0
-# This dictionary is for saving the next reactor state. After every loop it will be reconstructed from this data.
+# This list is for saving the next reactor state. After every loop it will be reconstructed from this data.
 state_list = [0] * (n_steps + 1)
 state_list[0] = reactor.thermo.TPY
 # mass in every reactor
@@ -137,7 +147,7 @@ depo_r = {}
 mass_depo = [0] * (n_steps + 1)
 sum_depo = 0.0
 
-# iterate through the PFR cells
+##############################################################################
 
 """
 An idea on how to solve the variable flow rate problem:
@@ -162,13 +172,10 @@ Problems:
 14) Check which heaviest elements can be deposited in gri30 to make it faster than in mech_13 -> Done (Only ~ 40 g/mol)
 15) Plot deposition through the length of reactor 
 """
+################### ACTUAL SIMULATION & ITERATION #############################
 
-# for i in range (iters) :
-#     # To reset the old state
-#     reactor = ct.IdealGasReactor(contents = gas, energy = 'on')
 for n in range(n_steps):
     # delete all existing walls and previos state in the reactor
-    # reactor.thermo.TDY.clear()
     reactor.walls.clear()
     # create wall for heat exchange. What Wall area [m^2] and Overall heat transfer coefficient [W/m^2]??
     if n < (3 * (n_steps // 4)):
@@ -177,6 +184,7 @@ for n in range(n_steps):
     else:
         ct.Wall(env_reserv, reactor, A=A_wall, U=50)
 
+    # create a simulation object
     sim2 = ct.ReactorNet([reactor])
 
     # Set the state of the reservoir to match that of the previous reactor
@@ -186,10 +194,12 @@ for n in range(n_steps):
     sim2.reinitialize()
     sim2.advance_to_steady_state()
 
+    # temporal variables
     T = reactor.T
     P = reactor.thermo.P
     Y = reactor.Y
 
+    # update list of pressure and temp
     p_profile[n + 1] = reactor.thermo.P
     T_profile[n + 1] = T
 
@@ -209,12 +219,12 @@ for n in range(n_steps):
         # For every compound in the reactor show only these with mol. weight ...
         # These will be set to 0.0
         for j, compound in enumerate(reactor.thermo.species()):
-
+            # Important condition is stated here. Only components heavier than 80 g/mol are going to be removed
             if reactor.thermo.molecular_weights[j] > 80.00:
 
                 name_Y_excl = compound.name
                 Y_excl = gas.species_index(compound.name)
-
+                # If this component doesn't exist on the list, add the name and value 0.
                 if name_Y_excl not in depo.keys():
                     depo[name_Y_excl] = 0.0
                     depo_r[name_Y_excl] = []
@@ -222,10 +232,8 @@ for n in range(n_steps):
                 # Mass in reactor
                 mass[n + 1] -= reactor.mass * Y[Y_excl]
 
-                # Density in reactor after deposition
-                # D -= reactor.mass * Y[Y_excl] / reactor.volume # Is that correct?!
 
-                # Part of the mass flow that is deposited in one slicereactor
+                # Part of the mass flow that is deposited in one slice reactor
                 mass_flow_rate_down = mass_flow_now * Y[Y_excl]
                 # Sum of deposited mass across reactor
                 mass_depo[n] += mass_flow_rate_down
@@ -255,10 +263,15 @@ for n in range(n_steps):
         mol_flow[n + 1] = mflow[n + 1] / reactor.thermo.mean_molecular_weight
         state_list[n + 1] = (T, P, Y)
         upstream.syncState()
-########################################################################
+
+##############################################################################
+
+######################## CREATE SOME RESULTS ###############################
+
+# show gas properties
 gas()
 
-# Creating a file to store deposited compounds and their mass flow rate
+# Create a file to store deposited compounds and their mass flow rate
 if remove == 1:
     f = open("Deposition.txt", "w")
     f.write("Comp.: MFR[kg/s]:\n\n")
@@ -267,17 +280,19 @@ if remove == 1:
     f.close()
 
 # Look for the compound that has a biggest sum of deposition
+
 # Compound with biggest deposition
 depo_comp_name = max(depo,key=depo.get)
 print(depo_comp_name)
+# Create a list where the deposited mass of this compound is stored along the reactor
 depo_comp_reactor = []
 depo_comp_reactor.append(0.0)
 for i in range(n_steps):
     depo_comp_reactor.append(depo_r[depo_comp_name][i])
 
-###################################################################
-# Compare Results in matplotlib
-###################################################################
+
+################# Compare Results in matplotlib ###########################
+
 fig, (ax1, ax2, ax3) = plt.subplots(3, 1)
 fig.suptitle('Plots for evaluation of reactor T & p')
 ax1.plot(z_vec, p_profile)  # [s[1] for s in state_list]
@@ -300,7 +315,7 @@ ax5.plot(z_vec, mol_flow)
 ax5.set_ylabel('mol flow rate [mol/s]')
 
 ax6.plot(z_vec, mass)
-ax6.set_ylabel('mass across reactor [kg]')
+ax6.set_ylabel('mass [kg]')
 
 ax6.set_xlabel('Reactor length [m]')
 
@@ -308,14 +323,16 @@ fig3, (ax7, ax8) = plt.subplots(2,1)
 fig3.suptitle('Deposition across the reactor')
 
 ax7.plot(z_vec, mass_depo)
-ax7.set_ylabel('sum of depo across reactor [kg/s]')
+ax7.set_ylabel('sum of depo [kg/s]')
 
 ax8.plot(z_vec, depo_comp_reactor)
-ax8.set_ylabel(depo_comp_name + ' depo across the reactor')
+ax8.set_ylabel(depo_comp_name + ' depo [kg/s]')
 
 ax8.set_xlabel('Reactor length [m]')
 
 plt.show()
+
+##################################################################
 
 # Check if sum depo is equal to mass flow rate difference:
 print("\n sum depo: ", sum_depo, " mfr difference: ", mass_flow_rate_0 - mflow[n_steps])
