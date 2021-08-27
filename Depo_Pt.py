@@ -19,7 +19,7 @@ PROBLEMS:
 
 Traceback (most recent call last):
   File "C:\...\kwier_gdcbe52\PycharmProjects\pfr_mech13\Depo_Pt.py", line 219, in <module>
-    sim2.reinitialize()
+    sim.reinitialize()
   File "interfaces\cython\cantera\reactor.pyx", line 1079, in cantera._cantera.ReactorNet.reinitialize
 cantera._cantera.CanteraError: 
 *****************************************************
@@ -47,13 +47,15 @@ Fehlermeldung: Number of surface sites not balanced in reaction
 
 ##################### INPUT DATA FROM TERMINAL ########################
 
-n_steps = int(input('Number of reactors in the pfr system. The number must be divisible by 4!\n'))
-while n_steps % 4 != 0:
-    print("The number must be divisible by 4!\n")
-    n_steps = int(input("Number of reactors:\n"))
-# iters = int(input('Number of iterations for the pfr-reactor cylcle?\n'))
-# mechanism = int(input('Press 0 for automatic gri_30, 1 to choose reduced gri30 or Press 2 to choose mech_13\n'))
-remove = int(input('Should all heavy components be removed after every reactor? 1- yes 0- no\n'))
+# n_steps = int(input('Number of reactors in the pfr system. The number must be divisible by 4!\n'))
+# while n_steps % 4 != 0:
+#     print("The number must be divisible by 4!\n")
+#     n_steps = int(input("Number of reactors:\n"))
+# # iters = int(input('Number of iterations for the pfr-reactor cylcle?\n'))
+# # mechanism = int(input('Press 0 for automatic gri_30, 1 to choose reduced gri30 or Press 2 to choose mech_13\n'))
+# remove = int(input('Should all heavy components be removed after every reactor? 1- yes 0- no\n'))
+n_steps = 8
+remove = 0
 
 # starts counting time in which program runs
 start_time = time.time()
@@ -75,7 +77,10 @@ initial_state = T_0, pressure, composition_0
 reactive_state = T_wall, pressure, composition_0
 
 # reaction mechanism file.yaml
-reaction_mech = 'mech_13_dehyd.yaml'
+reaction_mech = 'gri30.yaml'
+# reaction mechanism for surface reaction
+reaction_mech_surf = 'meth_pox_pt_gri30.yaml'
+
 
 # Reactor geometry
 length = 0.1  # *approximate* PFR length [m]
@@ -101,13 +106,16 @@ area_cat = area * porosity
 #     gas = ct.Solution(reaction_mechanism1)
 
 # Import gas model
-gas = ct.Solution(reaction_mech, 'gas')
+gas = ct.Solution(reaction_mech)
 # State with standard temp 273 for vol. calculation
 gas.TPX = T_0_n, pressure, composition_0
 gas()
+# Import gas model for surface reaction
+gas_surf = ct.Solution(reaction_mech_surf, 'gas')
+gas_surf.TPX = gas.TPX
 
 #import the surface model
-surf = ct.Interface(reaction_mech, 'Pt_surf', adjacent=[gas])
+surf = ct.Interface(reaction_mech_surf, 'Pt_surf', adjacent=[gas_surf])
 surf.TP = T_wall, pressure # Which temperature cat should have?
 
 # calculate a flow rate & velocity
@@ -132,9 +140,12 @@ A_wall = 2 * height * dz + 2 * depth * dz
 cat_vol = area_cat * dz
 cat_surf = cat_vol * cat_area_per_vol
 
-# create a new reactor
+# create a new reactor for gas phase
 reactor = ct.IdealGasReactor(contents=gas, energy='on')
 reactor.volume = r_vol
+# create a reactor for surface reaction
+reactor_surf = ct.IdealGasReactor(gas_surf, energy = 'off')
+reactor_surf.volume = cat_vol
 
 # create a reservoir to represent the reactor immediately upstream. Note
 # that the gas object is set already to the state of the upstream reactor
@@ -146,17 +157,22 @@ downstream = ct.Reservoir(gas, name='downstream')
 
 # Add the reacting surface to the reactor. The area is set to the desired
 # catalyst area in the reactor.
-rsurf = ct.ReactorSurface(surf, reactor, A=cat_surf)
+rsurf = ct.ReactorSurface(surf, reactor_surf, A=cat_surf)
 
 # The mass flow rate into the reactor will be fixed by using a
 # MassFlowController object.
 m = ct.MassFlowController(upstream, reactor)
 m.mass_flow_rate = mass_flow_rate_0
+# Between reactor and surf_reactor
+m_surf = ct.MassFlowController(reactor, reactor_surf)
+m_surf.mass_flow_rate = mass_flow_rate_0
 
 # We need an outlet to the downstream reservoir. This will determine the
 # pressure in the reactor. The value of K will only affect the transient
 # pressure difference.
 v = ct.PressureController(reactor, downstream, master=m, K=1e-6)
+# Between reactor and surf_reactor
+v_surf = ct.PressureController(reactor_surf, reactor, master=m_surf, K=1e-6)
 
 # create reservoirs for heat exchange with gas2 and for enviroment temp gas 3
 gas_600 = ct.Solution('liquidvapor.yaml', 'water')
@@ -212,7 +228,7 @@ sum_depo = 0.0
 
 ##############################################################################
 
-################### ACTUAL SIMULATION & ITERATION #############################
+################### SIMULATION & ITERATION #############################
 
 for n in range(n_steps):
     # delete all existing walls and previos state in the reactor
@@ -225,14 +241,17 @@ for n in range(n_steps):
         ct.Wall(env_reserv, reactor, A=A_wall, U=50)
 
     # create a simulation object
-    sim2 = ct.ReactorNet([reactor])
+    sim = ct.ReactorNet([reactor, reactor_surf])
 
     # Set the state of the reservoir to match that of the previous reactor
     gas.TPY = state_list[n]
+    # gas_surf.TPY = # state list or dict
+    # surf.coverages = # some list for covarages
+
     upstream.syncState()
     # integrate the reactor forward in time until steady state is reached
-    sim2.reinitialize()
-    sim2.advance_to_steady_state()
+    sim.reinitialize()
+    sim.advance_to_steady_state()
 
     # temporal variables
     T = reactor.T
