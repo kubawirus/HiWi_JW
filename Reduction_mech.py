@@ -14,14 +14,16 @@ def gas_funct(mechanism, initial_state):
     print('Reaction mechanism selected to: ', gas_mech, "\n")
 
     gas = ct.Solution(gas_mech)
+    # gas
     # gas()
     # Here is the initial conditions are defined
     # initial_state = 873.0, ct.one_atm, 'C3H8:10, H2:1'
 
     # Run a simulation with the full mechanism
     gas.TPX = initial_state
-    gas()
-    print(gas.n_reactions)
+    n_spec = gas.n_species
+    # gas()
+    # print(gas.n_reactions)
     r = ct.IdealGasConstPressureReactor(gas)
     sim = ct.ReactorNet([r])
 
@@ -46,7 +48,7 @@ def gas_funct(mechanism, initial_state):
     R = sorted(zip(Rmax, gas.reactions()), key=lambda x: -x[0])
 
     # Smallest reactions rate accepted
-    kmin = 10.0 ** (-20)
+    kmin = 10.0 ** (-15)
     # Create an empty list for reactions
     reactions = []
 
@@ -73,7 +75,9 @@ def gas_funct(mechanism, initial_state):
 
     # create the new reduced mechanism
     gas2 = ct.Solution(thermo='IdealGas', kinetics='GasKinetics',
-                       species=species, reactions=reactions)
+                       species=species, reactions=reactions, transport='mixture-averaged')
+    # gas2 = ct.Solution(thermo='IdealGas', species=species, transport='mixture-averaged')
+    gas_surf = ct.Solution(thermo='IdealGas', species=species, transport='mixture-averaged')
     # show gas2
     # gas2()
 
@@ -85,6 +89,7 @@ def gas_funct(mechanism, initial_state):
 
     # Re-run the ignition problem with the reduced mechanism (from there is not compulsory)
     gas2.TPX = initial_state
+    n_spec2 = gas2.n_species
     r = ct.IdealGasConstPressureReactor(gas2)
     sim = ct.ReactorNet([r])
 
@@ -106,6 +111,6 @@ def gas_funct(mechanism, initial_state):
               'K: number of species; R: number of reactions')
     plt.tight_layout()
 
-    plt.show()
-
-    return gas2, gas_mech
+    # plt.show()
+    print(gas_mech, " mechanism was reduced from ", n_spec, " to ", n_spec2, " species\n" )
+    return gas2, gas_mech, gas_surf
