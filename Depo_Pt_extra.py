@@ -3,9 +3,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.ticker import MaxNLocator
 import time
-import V_N
 import Reduction_mech
-import json
 """
 Zrobić porządek z z[1:0]
 """
@@ -18,10 +16,10 @@ Zrobić porządek z z[1:0]
 # iters = int(input('Number of iterations for the pfr-reactor cylcle?\n'))
 # mechanism = int(input('Press 0 for automatic gri_30, 1 to choose reduced gri30 or Press 2 to choose mech_13\n'))
 # inactiv = int(input('Should surface be decreased due to deposition? 1- yes'))
-n_steps = 40
+n_steps = 20
 mechanism = 2
 remove = 1
-inactiv = 40 # inactiv = 1 no deactivation, inactiv > 1 how many cycles should reactor work with decreasing surface every cycle.
+inactiv = 4 # inactiv = 1 no deactivation, inactiv > 1 how many cycles should reactor work with decreasing surface every cycle.
 # starts counting time in which program runs
 start_time = time.time()
 
