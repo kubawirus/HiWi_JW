@@ -23,11 +23,11 @@ inactiv = 4 # inactiv = 1 no deactivation, inactiv > 1 how many cycles should re
 # starts counting time in which program runs
 start_time = time.time()
 
-#-------------------- INPUT DATA --------------------#
+#-------------------- PROCESS PARAMETERS --------------------#
 # relative temperature [K]
-T_0_n = 273.0
+T_0_n = 293.0
 # inlet temperature [K]
-T_0 = 473.0
+T_0 = 590 + 273.15
 # wall temperature [K]
 T_wall = 600 + 273.15
 # constant pressure [Pa]
@@ -40,18 +40,19 @@ composition_0 = 'C3H8:10, H2:1'
 # definition of initial and reactive state
 initial_state = T_0, pressure, composition_0
 reactive_state = T_wall, pressure, composition_0
+
+#-------------------- DEPOSITION MODEL PARAMETERS --------------------#
 # Surface deactivation coefficient - is used to artificially enlarge the influence of deposition on a surface
 alpha1 = 4e9
 alpha2 = 4e10
-# reaction mechanism file.yaml
-# reaction_mech = 'mech_13.yaml'
 
 # reaction mechanism for surface reaction
-# reaction_mech_surf = 'gri30_PtSurf.yaml'
 reaction_mech_surf = 'Propan_surface.yaml'
 reaction_mech_surf2 = 'Propan_surface2.yaml'
 
-# Reactor geometry
+M_depo = 80.0 # Molar mass from which the deposition starts
+
+#-------------------- REACTOR GEOMETRY --------------------#
 length = 0.1  # *approximate* PFR length [m]
 area = 0.00024  # cross-sectional area of reactor [m**2]
 height = 0.006  # [m]
@@ -61,6 +62,8 @@ cat_area_per_vol = 1000   # Catalyst particle surface area per unit volume [1/m]
 area_react = area * (1-porosity)
 area_cat = area * porosity
 beta = 1 # How much from the main flow (gas reactor) will flow to the surface reactor, 1 = whole mass stream
+K = 10 # Heat transfer coeff. between wall and a reactor
+
 #-------------------- INITIAL CALCULATIONS & CREATING OBJECTS --------------------#
 
 # Here the reaction mechanism will be chosen. The default mechanism is gri30.yaml.
@@ -280,9 +283,9 @@ for cycle in range (inactiv):
         reactor_surf.walls.clear()
         # create wall for heat exchange. What Wall area [m^2] and Overall heat transfer coefficient [W/m^2]??
         if n < (3 * (n_steps // 4)):
-            ct.Wall(heat_reserv, reactor_surf,  A=A_wall, U=10)
+            ct.Wall(heat_reserv, reactor_surf,  A=A_wall, U=K)
         else:
-            ct.Wall(env_reserv, reactor_surf,  A=A_wall, U=10)
+            ct.Wall(env_reserv, reactor_surf,  A=A_wall, U=K)
 
         # create a simulation object
         sim = ct.ReactorNet([reactor, reactor_surf])
@@ -331,7 +334,7 @@ for cycle in range (inactiv):
             # These will be set to 0.0
             for j, compound in enumerate(reactor.thermo.species()):
                 # Important condition is stated here. Only components heavier than 80 g/mol are going to be removed
-                if reactor.thermo.molecular_weights[j] > 80.00:
+                if reactor.thermo.molecular_weights[j] > M_depo:
 
                     name_Y_excl = compound.name
                     Y_excl = gas.species_index(name_Y_excl)
@@ -408,9 +411,6 @@ for cycle in range (inactiv):
 #----------------------------------------------------------------------------#
 
     #-------------- CREATE SOME RESULTS --------------#
-
-    # show gas properties
-    # gas()
 
     # Create a file to store deposited compounds and their mass flow rate
     if remove == 1:
@@ -550,13 +550,7 @@ for cycle in range (inactiv):
     # fig8.show()
 
     #----------------------------------------------------------------------#
-    # Linear extrapolation of deposition BAUSTELLE!
-    '''
-    Annahmen: 
-    1. Es findet keine Deaktivierung der Oeberflaeche statt.
-    2. Es folgt, dass jedes mall genauso so viel Ablagerung produziert wird. 
-    3. 
-    '''
+
     t_react_sum = t_react_surf + t_react_gas
     mass_depo_ext = ( result_dict_surf["sum_depo"][cycle] / t_react_sum ) * 3600 * 1000
     print('\nDeposition in reactor ', mass_depo_ext , 'g/h')
