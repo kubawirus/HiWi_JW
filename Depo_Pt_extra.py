@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 from matplotlib.ticker import MaxNLocator
 import time
 import Reduction_mech
+from itertools import islice
 """
 Zrobić porządek z z[1:0]
 """
@@ -16,10 +17,11 @@ Zrobić porządek z z[1:0]
 # iters = int(input('Number of iterations for the pfr-reactor cylcle?\n'))
 # mechanism = int(input('Press 0 for automatic gri_30, 1 to choose reduced gri30 or Press 2 to choose mech_13\n'))
 # inactiv = int(input('Should surface be decreased due to deposition? 1- yes'))
-n_steps = 20
+n_steps = 40
 mechanism = 2
 remove = 1
-inactiv = 4 # inactiv = 1 no deactivation, inactiv > 1 how many cycles should reactor work with decreasing surface every cycle.
+inactiv = 100 # inactiv = 1 no deactivation, inactiv > 1 how many cycles should reactor work with decreasing surface every cycle. %10==0!
+Depo_plots = 5
 # starts counting time in which program runs
 start_time = time.time()
 
@@ -33,7 +35,7 @@ T_wall = 600 + 273.15
 # constant pressure [Pa]
 pressure = ct.one_atm
 # flow rate [m3/s] volumen flow standarized for 273K
-vol_flow_rate_N = 1.6664e-6
+vol_flow_rate_N = 9.166667e-7
 # composition
 composition_0 = 'C3H8:10, H2:1'
 # composition_0 = 'CH4:1, O2:1.5, AR:0.1'
@@ -43,8 +45,8 @@ reactive_state = T_wall, pressure, composition_0
 
 #-------------------- DEPOSITION MODEL PARAMETERS --------------------#
 # Surface deactivation coefficient - is used to artificially enlarge the influence of deposition on a surface
-alpha1 = 4e9
-alpha2 = 4e10
+alpha1 = 2e9
+alpha2 = 5e10
 
 # reaction mechanism for surface reaction
 reaction_mech_surf = 'Propan_surface.yaml'
@@ -53,12 +55,12 @@ reaction_mech_surf2 = 'Propan_surface2.yaml'
 M_depo = 80.0 # Molar mass from which the deposition starts
 
 #-------------------- REACTOR GEOMETRY --------------------#
-length = 0.1  # *approximate* PFR length [m]
-area = 0.00024  # cross-sectional area of reactor [m**2]
+length = 0.0815  # *approximate* PFR length [m]
+area = 0.000228  # cross-sectional area of reactor [m**2]
 height = 0.006  # [m]
-depth = 0.04  # [m]
+depth = 0.038  # [m]
 porosity = 0.6 # [-] It's not a porosity per se, it defines what fraction of reactor will be surface reactor.
-cat_area_per_vol = 1000   # Catalyst particle surface area per unit volume [1/m] What is a good value?
+cat_area_per_vol = 150   # Catalyst particle surface area per unit volume [1/m] What is a good value?
 area_react = area * (1-porosity)
 area_cat = area * porosity
 beta = 1 # How much from the main flow (gas reactor) will flow to the surface reactor, 1 = whole mass stream
@@ -98,6 +100,7 @@ for cycle in range (inactiv):
     # calculate a flow rate & velocity
     # vol_flow_rate = V_N.vol_norm(vol_flow_rate_N, gas, T_0, pressure)  # [m3/s]
     vol_flow_rate = vol_flow_rate_N * T_0_n/T_0
+    u_0_noCat = vol_flow_rate / area_react
     u_0 = vol_flow_rate / area_react  # inflow velocity [m/s]
     u_0_surf = vol_flow_rate / area_cat
 
@@ -165,7 +168,7 @@ for cycle in range (inactiv):
     if cycle == 0:
     # One dicts for all results:
         result_dict_gas = {}
-        list_for_results_gas = [ "moles", "mflow", "mol_flow", "u", "state_list", "mass", "pressure", "temp", "prod_rates_gas", "end_state"]
+        list_for_results_gas = [ "moles", "mflow", "mol_flow", "u", "state_list", "mass", "pressure", "temp", "prod_rates_gas", "end_state", "X", "conc"]
         for i in list_for_results_gas:
             result_dict_gas[i] = {}
             for j in range(inactiv + 1):
@@ -174,6 +177,8 @@ for cycle in range (inactiv):
                     result_dict_gas[i][j] = {}
                 elif i == "end_state":
                     result_dict_gas[i] = {}
+                elif i == "conc":
+                    result_dict_gas[i][j] = {}
                 #Lists
                 else:
                     result_dict_gas[i][j] = []
@@ -187,7 +192,7 @@ for cycle in range (inactiv):
         result_dict_gas["end_state"]["CH4"] = []
 
         result_dict_surf = {}
-        list_for_results_surf = ["mflow_surf", "u_surf", "state_list_surf", "surf_area_n", "depo", "depo_r", "mass_depo", "sum_depo", "surf_area1", "surf_area2","cat_area_per_vol", "cat_area_per_vol2", "prod_rates_surf", "cov"]
+        list_for_results_surf = ["mflow_surf", "u_surf", "state_list_surf", "surf_area_n", "depo", "depo_r", "mass_depo", "sum_depo", "surf_area1", "surf_area2","cat_area_per_vol", "cat_area_per_vol2", "prod_rates_surf", "cov", "depo10"]
         for i in list_for_results_surf:
             result_dict_surf[i] = {}
             for j in range (inactiv + 1):
@@ -250,6 +255,7 @@ for cycle in range (inactiv):
 
     #Update all lists for gas reactor
     #---- Gas Reactor ----#
+    result_dict_gas["X"][cycle].append(reactor.thermo.X)
     result_dict_gas["state_list"][cycle].append(reactor.thermo.TPY)
     result_dict_gas["pressure"][cycle].append(reactor.thermo.P)
     result_dict_gas["temp"][cycle].append(reactor.T)
@@ -277,6 +283,7 @@ for cycle in range (inactiv):
 
     for n in range(n_steps):
         # Reactiv Surface in surf reactor is decreased according to the deposition in this part of reacor.
+        # if n !=  0:
         rsurf.area = result_dict_surf["surf_area1"][cycle][n]
         rsurf2.area = result_dict_surf["surf_area2"][cycle][n]
         # delete all existing walls and previos state in the reactor
@@ -287,8 +294,16 @@ for cycle in range (inactiv):
         else:
             ct.Wall(env_reserv, reactor_surf,  A=A_wall, U=K)
 
+        #BAUSTELLE:
+        # for the first part of reactor only gas, the second part with cat and the last only gas.
+        if n < (n_steps // 4):
+            sim = ct.ReactorNet([reactor])
+        elif n > (3 * (n_steps // 4)):
+            sim = ct.ReactorNet([reactor])
+        else:
+            sim = ct.ReactorNet([reactor, reactor_surf])
         # create a simulation object
-        sim = ct.ReactorNet([reactor, reactor_surf])
+        #sim = ct.ReactorNet([reactor, reactor_surf])
 
         # Set the state of the reservoir to match that of the previous reactor
         gas.TPY = STATE_LIST
@@ -329,6 +344,7 @@ for cycle in range (inactiv):
             # mol_flow[n + 1] = mass_flow_now / reactor.thermo.mean_molecular_weight
             result_dict_gas["state_list"][cycle].append((T,P,Y))
             result_dict_surf["mass_depo"][cycle].append(0.0)
+            result_dict_gas["X"][cycle].append(reactor.thermo.X)
 
             # For every compound in the reactor show only these with mol. weight ...
             # These will be set to 0.0
@@ -374,12 +390,13 @@ for cycle in range (inactiv):
             result_dict_gas["u"][cycle].append(M_FLOW/(reactor.density * area_react))
             result_dict_surf["u_surf"][cycle].append( (M_FLOW * beta )/ (reactor.density * area_cat))
             result_dict_gas["state_list"][cycle][-1] = ((T, P, Y))
+            result_dict_gas["X"][cycle][-1] = reactor.thermo.X
             upstream.syncState()
 
             #-------------- DEACTIVATION OF REACTIVE SURFACE DUE TO DEPOSITION ---------#
             if inactiv > 1:
             ## Problem: How to bind the deacrising activity of surface with increasing deposition of heavy compounds.
-                result_dict_surf["cat_area_per_vol"][cycle+1].append(result_dict_surf["cat_area_per_vol"][cycle][n] *  (1 - (result_dict_surf["mass_depo"][cycle][n] * alpha1)))
+                result_dict_surf["cat_area_per_vol"][cycle+1].append(result_dict_surf["cat_area_per_vol"][cycle][n] * (1 - (result_dict_surf["mass_depo"][cycle][n] * alpha1)))
                 result_dict_surf["cat_area_per_vol2"][cycle+1].append(result_dict_surf["cat_area_per_vol2"][cycle][n] * (1 - (result_dict_surf["mass_depo"][cycle][n] * alpha2)))
                 result_dict_surf["surf_area1"][cycle+1].append(result_dict_surf["cat_area_per_vol"][cycle+1][n] * cat_vol)
                 result_dict_surf["surf_area2"][cycle+1].append(result_dict_surf["cat_area_per_vol2"][cycle+1][n] * cat_vol)
@@ -392,6 +409,7 @@ for cycle in range (inactiv):
             result_dict_gas["u"][cycle].append(M_FLOW/(reactor.density * area_react))
             result_dict_surf["u_surf"][cycle].append( (M_FLOW * beta )/ (reactor.density * area_cat))
             result_dict_gas["state_list"][cycle].append(STATE_LIST)
+            result_dict_gas["X"][cycle].append(reactor.thermo.X)
             upstream.syncState()
 
         # Update residence time
@@ -408,6 +426,13 @@ for cycle in range (inactiv):
             if j not in result_dict_gas["prod_rates_gas"][cycle].keys():
                 result_dict_gas["prod_rates_gas"][cycle][j] = []
             result_dict_gas["prod_rates_gas"][cycle][j].append(reactor.kinetics.net_production_rates.T[i])
+
+        for i, j in enumerate(reactor.thermo.kinetics_species_names):
+            if j not in result_dict_gas["conc"][cycle].keys():
+                result_dict_gas["conc"][cycle][j] = []
+            result_dict_gas["conc"][cycle][j].append(reactor.thermo.X.T[i])
+
+
 #----------------------------------------------------------------------------#
 
     #-------------- CREATE SOME RESULTS --------------#
@@ -433,123 +458,132 @@ for cycle in range (inactiv):
 
     # End state results for mass fraction
     for end_compound in ("C3H8", "CH4", "C3H6", "H2"):
-        result_dict_gas["end_state"][end_compound].append(result_dict_gas["state_list"][cycle][-1][2][gas_surf.species_index(end_compound)])
-    #-------------- Compare Results in matplotlib --------------#
+        # result_dict_gas["end_state"][end_compound].append(result_dict_gas["state_list"][cycle][-1][2][gas_surf.species_index(end_compound)])
+        result_dict_gas["end_state"][end_compound].append(
+            result_dict_gas["X"][cycle][-1][gas_surf.species_index(end_compound)])
+
     z = result_dict_gas["length"]
-    # y = state_list[1:]
-    fig, (ax1, ax2, ax3) = plt.subplots(3, 1)
-    fig.suptitle('Plots for evaluation of reactor T & p')
-    ax1.plot(z, result_dict_gas["pressure"][cycle])  # [s[1] for s in state_list]
-    ax1.set_ylabel('Pressure [Pa]')
 
-    ax2.plot(z, result_dict_gas["temp"][cycle])
-    ax2.set_ylabel('Temperature [cycle]')
-
-    ax3.plot(z, result_dict_gas["u"][cycle])
-    ax3.set_ylabel('Velocity [m/s]')
-
-    ax3.set_xlabel('Reactor length [m]')
-
-    fig2, (ax4, ax6) = plt.subplots(2, 1)
-    fig2.suptitle('Flow rates & mass across the reactor')
-    ax4.plot(z, result_dict_gas["mflow"][cycle])
-    ax4.set_ylabel('mass flow rate [kg/s]')
-
-    ax6.plot(z, result_dict_gas["mass"][cycle])
-    ax6.set_ylabel('mass [kg]')
-
-    ax6.set_xlabel('Reactor length [m]')
-
-    if remove == 1:
-        fig3, (ax7, ax8) = plt.subplots(2,1)
-        fig3.suptitle('Deposition across the reactor')
-
-        ax7.plot(z[1:], result_dict_surf["mass_depo"][cycle])
-        ax7.set_ylabel('sum of depo [kg/s]')
-
-        ax8.plot(z[1:], result_dict_surf["depo_r"][cycle][depo_comp_name])
-        ax8.set_ylabel(depo_comp_name + ' depo [kg/s]')
-
-        ax8.set_xlabel('Reactor length [m]')
-
-    # Plot for species fractions thru reactor
-    fig4, (ax9,ax10, ax11) = plt.subplots(3,1)
-    fig4.suptitle('Fractions of species')
-    # Define list for desired species
-    list_species1 = []
-    list_species2 = []
-    list_species3 = []
-    list_species1_surf = []
-    list_species2_surf = []
-
-    # Fulfill the list
-    for val in (result_dict_gas["state_list"][cycle]):
-        list_species1.append(val[2][gas.species_index('C3H8')])
-        list_species2.append(val[2][gas.species_index('C3H6')])
-        list_species3.append(val[2][gas.species_index('CH4')])
-        list_species1_surf.append(val[2][gas_surf.species_index("C3H8")])
-        list_species2_surf.append(val[2][gas_surf.species_index("C3H6")])
-
-    ax9.plot(z, list_species1)
-    ax9.plot(z, list_species1_surf, ls='--')
-    ax9.set_ylabel('Mass fraction of C3H8 in gas & at the surf')
-    ax10.plot(z, list_species2)
-    ax10.plot(z, list_species2_surf, ls='--')
-    ax10.set_ylabel('Mass fraction of C3H6 in gas & at the surf')
-    ax11.plot(z, list_species3)
-    ax11.set_ylabel('Mass fraction of CH4 in gas & at the surf')
-    ax10.set_xlabel('Reactor length [m]')
-
-    # Plots for surface reactor
-    # fig5, (ax11, ax12, ax13) = plt.subplots(3, 1)
-    # fig5.suptitle('Plots for evaluation of surface reactor u & mflow')
+    # Save 10 biggest deposition compounds in ascending order
+    result_dict_surf['depo10'][cycle] = dict(sorted(result_dict_surf['depo'][cycle].items(), key=lambda item: item[1], reverse=True)[:10])
+    # #-------------- Compare Results in matplotlib --------------#
+    # z = result_dict_gas["length"]
+    # # y = state_list[1:]
+    # fig, (ax1, ax2, ax3) = plt.subplots(3, 1)
+    # fig.suptitle('Plots for evaluation of reactor T & p')
+    # ax1.plot(z, result_dict_gas["pressure"][cycle])  # [s[1] for s in state_list]
+    # ax1.set_ylabel('Pressure [Pa]')
     #
-    # ax11.plot(z_vec, T_profile_surf)
-    # ax11.set_ylabel('Temperature [K]')
+    # ax2.plot(z, result_dict_gas["temp"][cycle])
+    # ax2.set_ylabel('Temperature')
     #
-    # ax12.plot(z_vec, u_surf)
-    # ax12.set_ylabel('Velocity [m/s]')
+    # ax3.plot(z, result_dict_gas["u"][cycle])
+    # ax3.set_ylabel('Velocity [m/s]')
     #
-    # ax13.plot(z_vec, mflow_surf)
-    # ax13.set_ylabel('mass flow rate [kg/s]')
-    # ax13.set_xlabel('Reactor length [m]')
-
-    # Plot for species fractions thru surface reactor
-    fig6, (ax14,ax15) = plt.subplots(2,1)
-    fig6.suptitle('Coverages in surface reactor')
-    cov1 = result_dict_surf["cov"][cycle].get('PT(S)')
-    cov2 = result_dict_surf["cov"][cycle].get('H(S)')
-    ax14.plot(z[1:], cov1)
-    ax14.set_ylabel('Cov PT(S)')
-    ax15.plot(z[1:], cov2)
-    ax15.set_ylabel('Cov H(S)')
-    ax15.set_xlabel('Reactor length [m]')
-
-    fig7, (ax16, ax17) = plt.subplots(2,1)
-    fig7.suptitle('Net production rates on the surface')
-    ax16.plot(z[1:], result_dict_surf["prod_rates_surf"][cycle]['C3H8'])
-    ax17.plot(z[1:], result_dict_surf["prod_rates_surf"][cycle]['C3H6'])
-    ax16.set_ylabel('C3H8')
-    ax17.set_ylabel('C3H6')
-    ax17.set_xlabel('Reactor length [m]')
-
-    fig8, (ax18, ax19) = plt.subplots(2,1)
-    fig8.suptitle('Net production rates in gas phase')
-    ax18.plot(z[1:], result_dict_gas["prod_rates_gas"][cycle]['C3H8'])
-    ax19.plot(z[1:], result_dict_gas["prod_rates_gas"][cycle]['C3H6'])
-    ax18.set_ylabel('C3H8')
-    ax19.set_ylabel('C3H6')
-    ax19.set_xlabel('Reactor length [m]')
-
-    # plt.savefig('Depo_Pt_Plot.png')
-    # plt.show()
-    # fig4.show()
+    # ax3.set_xlabel('Reactor length [m]')
+    #
+    # fig2, (ax4, ax6) = plt.subplots(2, 1)
+    # fig2.suptitle('Flow rates & mass across the reactor')
+    # ax4.plot(z, result_dict_gas["mflow"][cycle])
+    # ax4.set_ylabel('mass flow rate [kg/s]')
+    #
+    # ax6.plot(z, result_dict_gas["mass"][cycle])
+    # ax6.set_ylabel('mass [kg]')
+    #
+    # ax6.set_xlabel('Reactor length [m]')
+    #
     # if remove == 1:
-    #     fig3.show()
-    # fig7.show()
-    # fig8.show()
-
-    #----------------------------------------------------------------------#
+    #     fig3, (ax7, ax8) = plt.subplots(2,1)
+    #     fig3.suptitle('Deposition across the reactor')
+    #
+    #     ax7.plot(z[1:], result_dict_surf["mass_depo"][cycle])
+    #     ax7.set_ylabel('sum of depo [kg/s]')
+    #
+    #     ax8.plot(z[1:], result_dict_surf["depo_r"][cycle][depo_comp_name])
+    #     ax8.set_ylabel(depo_comp_name + ' depo [kg/s]')
+    #
+    #     ax8.set_xlabel('Reactor length [m]')
+    #
+    # # Plot for species fractions thru reactor
+    # fig4, (ax9,ax10, ax11) = plt.subplots(3,1)
+    # fig4.suptitle('Fractions of species')
+    # # Define list for desired species
+    # list_species1 = []
+    # list_species2 = []
+    # list_species3 = []
+    # list_species1_surf = []
+    # list_species2_surf = []
+    #
+    # # Fulfill the list
+    # for val in (result_dict_gas["state_list"][cycle]):
+    #     list_species1.append(val[2][gas.species_index('C3H8')])
+    #     list_species2.append(val[2][gas.species_index('C3H6')])
+    #     list_species3.append(val[2][gas.species_index('CH4')])
+    #     list_species1_surf.append(val[2][gas_surf.species_index("C3H8")])
+    #     list_species2_surf.append(val[2][gas_surf.species_index("C3H6")])
+    #
+    # ax9.plot(z, list_species1)
+    # ax9.plot(z, list_species1_surf, ls='--')
+    # ax9.set_ylabel('Y C3H8 gas&surf')
+    # ax10.plot(z, list_species2)
+    # ax10.plot(z, list_species2_surf, ls='--')
+    # ax10.set_ylabel('Y C3H6 gas&surf')
+    # ax11.plot(z, list_species3)
+    # ax11.set_ylabel('Y CH4 gas&surf')
+    # ax10.set_xlabel('Reactor length [m]')
+    #
+    # # Plots for surface reactor
+    # # fig5, (ax11, ax12, ax13) = plt.subplots(3, 1)
+    # # fig5.suptitle('Plots for evaluation of surface reactor u & mflow')
+    # #
+    # # ax11.plot(z_vec, T_profile_surf)
+    # # ax11.set_ylabel('Temperature [K]')
+    # #
+    # # ax12.plot(z_vec, u_surf)
+    # # ax12.set_ylabel('Velocity [m/s]')
+    # #
+    # # ax13.plot(z_vec, mflow_surf)
+    # # ax13.set_ylabel('mass flow rate [kg/s]')
+    # # ax13.set_xlabel('Reactor length [m]')
+    #
+    # # Plot for species fractions thru surface reactor
+    # fig6, (ax14,ax15) = plt.subplots(2,1)
+    # fig6.suptitle('Coverages in surface reactor')
+    # cov1 = result_dict_surf["cov"][cycle].get('PT(S)')
+    # cov2 = result_dict_surf["cov"][cycle].get('H(S)')
+    # ax14.plot(z[1:], cov1)
+    # ax14.set_ylabel('Cov PT(S)')
+    # ax15.plot(z[1:], cov2)
+    # ax15.set_ylabel('Cov H(S)')
+    # ax15.set_xlabel('Reactor length [m]')
+    #
+    # fig7, (ax16, ax17) = plt.subplots(2,1)
+    # fig7.suptitle('Net production rates on the surface')
+    # ax16.plot(z[1:], result_dict_surf["prod_rates_surf"][cycle]['C3H8'])
+    # ax17.plot(z[1:], result_dict_surf["prod_rates_surf"][cycle]['C3H6'])
+    # ax16.set_ylabel('C3H8')
+    # ax17.set_ylabel('C3H6')
+    # ax17.set_xlabel('Reactor length [m]')
+    #
+    # fig8, (ax18, ax19) = plt.subplots(2,1)
+    # fig8.suptitle('Net production rates in gas phase')
+    # ax18.plot(z[1:], result_dict_gas["prod_rates_gas"][cycle]['C3H8'])
+    # ax19.plot(z[1:], result_dict_gas["prod_rates_gas"][cycle]['C3H6'])
+    # ax18.set_ylabel('C3H8')
+    # ax19.set_ylabel('C3H6')
+    # ax19.set_xlabel('Reactor length [m]')
+    #
+    # # plt.savefig('Depo_Pt_Plot.png')
+    # # plt.show()
+    # if inactiv < 2:
+    #     fig4.show()
+    #     # if remove == 1:
+    #         # fig3.show()
+    #     # fig7.show()
+    #     # fig8.show()
+    #     # fig.show()
+    #
+    # #----------------------------------------------------------------------#
 
     t_react_sum = t_react_surf + t_react_gas
     mass_depo_ext = ( result_dict_surf["sum_depo"][cycle] / t_react_sum ) * 3600 * 1000
@@ -561,22 +595,87 @@ for cycle in range (inactiv):
     print("\nResidence time in reactive Part of gas Reactor = ", t_react_gas, " s")
     print("\nResidence time in reactive Part of surface reactor = ", t_react_surf, " s")
 
+# Writing txt file for deposition output
+# Define Cycles for output
+cycles_depo = [0, inactiv/2 - 1 , inactiv -1 ]
+f = open("Deposition10.txt", "w")
+for i in cycles_depo:
+    f.write("\n\nCycle " +  str(i) + "\n")
+    f.write("Comp.: MFR[kg/s]:\n\n")
+    for key in result_dict_surf["depo10"][i]:
+        f.write(key + ": " + str(result_dict_surf["depo10"][i][key]) + "\n")
+f.close()
+
+
 if cycle > 1:
     list_cycle = np.arange(inactiv)
-    fig9, (ax20, ax21, ax22) = plt.subplots(3,1)
-    fig9.suptitle('Mass fraction of compounds at the outlet of reactor')
+    fig9, (ax20) = plt.subplots(figsize=(8,5))
+    # fig9.suptitle('Moll fraction of compounds at the outlet of reactor')
     ax20.plot(list_cycle, result_dict_gas["end_state"]["C3H8"], label = 'C3H8')
     ax20.plot(list_cycle, result_dict_gas["end_state"]["C3H6"], label = 'C3H6')
+    ax20.plot(list_cycle, result_dict_gas["end_state"]["CH4"], label = 'CH4')
+    ax20.plot(list_cycle, result_dict_gas["end_state"]["H2"], label = 'H2')
+    ax20.set_xlabel('Cycles')
+    ax20.set_ylabel('Moll fraction [mol/mol]')
     ax20.xaxis.set_major_locator(MaxNLocator(integer=True))
-    ax21.plot(list_cycle, result_dict_gas["end_state"]["CH4"])
-    ax21.xaxis.set_major_locator(MaxNLocator(integer=True))
-    ax21.set_ylabel('CH4')
-    ax22.plot(list_cycle, result_dict_gas["end_state"]["H2"])
-    ax22.set_ylabel('H2')
-    ax22.set_xlabel('Cycles')
-    ax22.xaxis.set_major_locator(MaxNLocator(integer=True))
-
     fig9.legend()
-    fig9.show()
+    fig9.savefig('mol_frac.png', dpi=400)
 
-print("\n--- %s seconds ---" % (time.time() - start_time))
+    fig10, ax23 = plt.subplots(figsize=(8,5))
+    # fig10.suptitle('Deposition along the reactor in cycles')
+    # Depo_plots = 5  # How many plots should be in the diagramm
+    for i in range(Depo_plots):
+        pltNR = i * (inactiv/Depo_plots)
+        deposition = np.multiply(result_dict_surf["mass_depo"][pltNR],10e6)
+        deposition = deposition.tolist()
+        ax23.plot(z[1:],deposition, label = 'Cycle ' + str(int(pltNR)))
+    ax23.set_ylabel('Deposition [mg]')
+    ax23.set_xlabel('Reactor length [m]')
+    ax23.autoscale()
+    fig10.legend()
+    fig10.savefig('depo.png', dpi=400)
+
+    fig11, ax24 = plt.subplots(figsize=(8,5))
+    # fig11.suptitle('Surface area per Volume')
+    result_dict_surf['cat_area_per_vol'][0].pop(0)
+    for i in range (Depo_plots):
+        pltNR = pltNR = i * (inactiv/Depo_plots)
+        ax24.plot(z[1:], result_dict_surf['cat_area_per_vol'][pltNR], label = 'Cycle ' + str(int(pltNR)))
+    ax24.set_ylabel('Specific Surface [1/m]')
+    ax24.set_xlabel('Reactor length [m]')
+    fig11.legend()
+    fig11.savefig('surf_vol.png', dpi=400)
+
+    fig12, ax25 = plt.subplots(figsize=(8,5))
+    # fig12.suptitle('Selective surface area per Volume')
+    result_dict_surf['cat_area_per_vol2'][0].pop(0)
+    z1 = z[1:]
+    slice = int(n_steps/4 - 1)
+    for i in range (Depo_plots):
+        pltNR = i * (inactiv/Depo_plots)
+        ax25.plot(z1[slice:], result_dict_surf['cat_area_per_vol2'][2 * i][slice:],  label = 'Cycle ' + str(2 * i))
+    ax25.set_ylabel('Specific Surface [1/m]')
+    ax25.set_xlabel('Reactor length [m]')
+    fig12.legend()
+    fig12.savefig('surf2_vol.png', dpi=400)
+
+
+    fig13, axs = plt.subplots(2, 2, sharex= True, figsize=(8,5))
+    # fig13.suptitle('Moll fraction of compounds along the reactor')
+    for i in range(Depo_plots):
+        pltNR = pltNR = i * (inactiv / Depo_plots)
+        axs[0,0].plot(z[1:], result_dict_gas['conc'][pltNR]['C3H8'], label='Cycle ' + str(int(pltNR)))
+        axs[0,0].set_title('C3H8')
+        axs[0,1].plot(z[1:], result_dict_gas['conc'][pltNR]['C3H6'])
+        axs[0, 1].set_title('C3H6')
+        axs[1,0].plot(z[1:], result_dict_gas['conc'][pltNR]['CH4'])
+        axs[1, 0].set_title('CH4')
+        axs[1,1].plot(z[1:], result_dict_gas['conc'][pltNR]['H2'])
+        axs[1, 1].set_title('H2')
+    fig13.text(0.5, 0.04, "Reactor length [m]", ha='center', va='center')
+    fig13.text(0.04, 0.5, "Concentration [mol/m^3]", ha='center', va='center', rotation='vertical')
+    fig13.legend()
+    fig13.savefig('conc.png', dpi=400)
+
+    plt.show()
+    print("\n--- %s seconds ---" % (time.time() - start_time))
